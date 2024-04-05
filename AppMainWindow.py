@@ -4,6 +4,7 @@ from multiprocessing import Queue
 import pyqtgraph as pg
 from scipy.fft import fft,fftfreq
 import numpy as np
+import math
 
 class MainWindow(QtWidgets.QMainWindow):
     def __init__(self, q:Queue) -> None:
@@ -93,12 +94,20 @@ class MainWindow(QtWidgets.QMainWindow):
     def updateData(self):
          self.q2Vars(self.q, self.xs, self.ys)
     def updateTPlot(self):
-         self.lineT.setData(self.xs, self.ys)
+        xs = np.array(self.xs)
+        ys = np.array(self.ys)
+        self.lineT.setData(xs, ys)
     def updateFPlot(self):
         T = 1/50 # 50 Hz
         N = len(self.ys)
         ys = np.array(self.ys)
         yf = fft(ys)
         xf = fftfreq(N, T)[:N//2]
-        self.lineF.setData(xf, 2.0 * abs(yf[0:N//2]))
+        if self.useSPL:
+            self.lineF.setData(xf, self.lin2dbSPL(2.0 * abs(yf[0:N//2])))
+        else:
+            self.lineF.setData(xf, 2.0 * abs(yf[0:N//2]))
+    def lin2dbSPL(self,x):
+        return 20*np.log10(x/(2*10**-5))
+
         
