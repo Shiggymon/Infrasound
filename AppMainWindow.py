@@ -4,11 +4,15 @@ from multiprocessing import Queue
 import pyqtgraph as pg
 from scipy.fft import fft,fftfreq
 import numpy as np
-import math
+import serial.tools.list_ports
 
 class MainWindow(QtWidgets.QMainWindow):
     def __init__(self, q:Queue) -> None:
-        super().__init__()
+        super().__init__()        
+        self.xs = [0]
+        self.ys = [0]
+        self.useSPL = True
+        self.serialPorts = list()
         self.setWindowTitle("Infraschall Analyse")
         mainWidget = QWidget()
         vLayout = QVBoxLayout()
@@ -18,6 +22,15 @@ class MainWindow(QtWidgets.QMainWindow):
         settingsSeparator2 = QFrame()
         plotGraph = pg.PlotWidget()
         fftGraph = pg.PlotWidget()
+        buttonReloadSerial = QPushButton("Reload")
+        buttonReloadSerial.clicked.connect(self.reloadSerial)
+        self.comboSelectSerial = QComboBox()
+        self.comboSelectSerial.setEditable(True)
+        buttonStartCapture = QPushButton("Start")
+        buttonStartCapture.clicked.connect(self.startCapture)
+        buttonStopCapture = QPushButton("Stop")
+        buttonStopCapture.clicked.connect(self.stopCapture)
+
         # Set Top Layout with 2 Graphs
         vLayout.addLayout(hTopLayout)
         hTopLayout.addWidget(plotGraph)
@@ -35,12 +48,12 @@ class MainWindow(QtWidgets.QMainWindow):
         settingsLayout.setColumnStretch(5,1)
         # Settings Column 1: Serial Connection and data Recording
         settingsLayout.addWidget(QLabel("Data Capturing"),0,1)
-        settingsLayout.addWidget(QComboBox(),1,1)
-        settingsLayout.addWidget(QPushButton("Reload"),2,1)
+        settingsLayout.addWidget(self.comboSelectSerial,1,1)
+        settingsLayout.addWidget(buttonReloadSerial,2,1)
         settingsLayout.addWidget(QLabel(""),3,1)
-        settingsLayout.addWidget(QPushButton("Start"),4,1)
+        settingsLayout.addWidget(buttonStartCapture,4,1)
         settingsLayout.addWidget(QPushButton("Pause"),5,1)
-        settingsLayout.addWidget(QPushButton("Stop"),6,1)
+        settingsLayout.addWidget(buttonStopCapture,6,1)
         # Settings Column 3: Display Settings
         settingsLayout.addWidget(QLabel("Data Display"),0,3)
         settingsLayout.addWidget(QDoubleSpinBox(),1,3)
@@ -57,9 +70,6 @@ class MainWindow(QtWidgets.QMainWindow):
         # Add Layout to Main Window
         mainWidget.setLayout(vLayout)
         self.setCentralWidget(mainWidget)
-        self.xs = [0]
-        self.ys = [0]
-        self.useSPL = True
         self.lineT = plotGraph.plot(self.xs,self.ys)
         self.lineF = fftGraph.plot(self.xs,self.ys)
         self.q = q
@@ -109,5 +119,30 @@ class MainWindow(QtWidgets.QMainWindow):
             self.lineF.setData(xf, 2.0 * abs(yf[0:N//2]))
     def lin2dbSPL(self,x):
         return 20*np.log10(x/(2*10**-5))
+    def reloadSerial(self):
+        currentIndex = self.comboSelectSerial.currentIndex()
+        currentText = self.comboSelectSerial.currentText()
+        self.serialPorts = serial.tools.list_ports.comports()
+        self.serialPorts.sort(key=lambda x : x.device)
+        
+        # clear list
+        count = self.comboSelectSerial.count()
+        for i in range(0,count):
+            self.comboSelectSerial.removeItem(0)
+        # repopulate list
+        for p in self.serialPorts:
+            self.comboSelectSerial.addItem(p.device)
+        
+        # select previously selected port. If none was selected, select first. 
+        if currentIndex == -1 and currentText == "":
+            self.comboSelectSerial.setCurrentIndex(0)
+        else:
+            self.comboSelectSerial.setCurrentText(currentText)
+    
+    def startCapture(self):
+        pass
+
+    def stopCapture(self):
+        pass
 
         
