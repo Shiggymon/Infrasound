@@ -1,13 +1,23 @@
 from PyQt6 import QtCore, QtWidgets
 from PyQt6.QtWidgets import QApplication, QPushButton, QVBoxLayout, QWidget, QHBoxLayout, QGridLayout, QLabel, QComboBox, QDoubleSpinBox, QFrame, QGroupBox
-from multiprocessing import Queue
+from multiprocessing import Queue, connection
 import pyqtgraph as pg
 from scipy.fft import fft,fftfreq
 import numpy as np
 import serial.tools.list_ports
+from enum import Enum, auto
+from typing import NamedTuple
+
+class MsgType(Enum):
+    STARTSERIAL = auto()
+    STOPSERIAL = auto()
+
+class WindowMessage(NamedTuple):
+    type: MsgType
+    payload: object = None
 
 class MainWindow(QtWidgets.QMainWindow):
-    def __init__(self, q:Queue) -> None:
+    def __init__(self, p:connection, q:Queue) -> None:
         super().__init__()        
         self.xs = [0]
         self.ys = [0]
@@ -73,6 +83,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.lineT = plotGraph.plot(self.xs,self.ys)
         self.lineF = fftGraph.plot(self.xs,self.ys)
         self.q = q
+        self.displayPipe = p
 
         # Setup Timers for periodic UI and Data Update
         self.updDataTimer = QtCore.QTimer()
@@ -140,9 +151,13 @@ class MainWindow(QtWidgets.QMainWindow):
             self.comboSelectSerial.setCurrentText(currentText)
     
     def startCapture(self):
-        pass
+        from Infra import SerialPortSettings
+        msg = WindowMessage(MsgType.STARTSERIAL, SerialPortSettings(port=self.comboSelectSerial.currentText(), baudrate=38400))
+        self.displayPipe.send(msg)
 
     def stopCapture(self):
-        pass
+        msg = WindowMessage(MsgType.STOPSERIAL)
+        self.displayPipe.send(msg)
+
 
         
