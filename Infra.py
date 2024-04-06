@@ -96,6 +96,7 @@ def main():
             inProcess.join()
             serialEvents["failure"].clear()
             serialEvents["terminate"].clear()
+            displayPipeP.send(WindowMessage(MsgType.SERIALSTOPPED))
 
         # check for messages from Main Window
         while displayPipeP.poll():
@@ -106,11 +107,13 @@ def main():
                     portSettings = msg.payload
                     inProcess = Process(None, target=getInData, args=(serialEvents, dataQ, portSettings))
                     inProcess.start()
+                    displayPipeP.send(WindowMessage(MsgType.SERIALSTARTED))
             elif msg.type == MsgType.STOPSERIAL:
                 # stop serial
                 serialEvents["terminate"].set()
                 inProcess.join()
                 serialEvents["terminate"].clear()
+                displayPipeP.send(WindowMessage(MsgType.SERIALSTOPPED))
 
 
 if __name__ == "__main__":
