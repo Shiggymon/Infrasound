@@ -2,56 +2,60 @@ from PyQt6.QtCore import Qt
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 import serial
-from multiprocessing import Process, Event, Queue
+from multiprocessing import Process, Event, Queue, Pipe, connection
 from multiprocessing.shared_memory import ShareableList
 import numpy as np
 import time
 import pyqtgraph as pg
 from PyQt6 import QtCore,QtWidgets
-from AppMainWindow import MainWindow
+from AppMainWindow import MainWindow, MsgType, WindowMessage
+from typing import NamedTuple
 
-def getInData(q:Queue):
+class SerialPortSettings(NamedTuple):
+    port: str
+    baudrate: int
+    timeout: int = 5
+
+
+def getInData(events,q:Queue,portSettings:SerialPortSettings):
+    firstConversion = True
     # initialize serial port
     ser = serial.Serial()
-    ser.port = "/dev/tty.usbserial-A5XK3RJT"
-    ser.baudrate = 38400
-    ser.timeout = 10
+    ser.port = portSettings.port
+    ser.baudrate = portSettings.baudrate
+    ser.timeout = portSettings.timeout
     ser.open()
     if ser.is_open == True:
         print("Serial port is open\n")
         print(ser, "\n")
-    time.sleep(1)
-    while True:
-        #ser.reset_input_buffer()
-        # aquire and parse data from serial port
-        recvData = []
-        if ser.in_waiting:
-            line = ser.readline()
-            value = float(line)
-            recvData.append(value)
-            # add x and y to the list
-            # if len(xs) > 0:
-            #     xs.append(xs[-1]+1)
-            # else:
-            #     xs.append(0)
-            # ys.append(value)
-        if len(recvData) > 0:
-            q.put(recvData)
-        # limit to 50*10 items
-        #xs = xs[-500:]
-        #ys = ys[-500:]
-        time.sleep(0.01)
-#        break
-        
-def outData(q:Queue):
-#    fig = plt.figure()
-#    ax = fig.add_subplot(1,1,1)
-#    line1, = ax.plot(xs,ys, label="Pa")
-#    fig.canvas.draw()
-#    ani = animation.FuncAnimation(fig, displayGraph, fargs=(q, xs, ys), interval=100)
-#    plt.show()
+    else:
+        events["failure"].set()
+    time.sleep(0.1)
+    try:
+        ser.reset_input_buffer()
+        while not events["terminate"].is_set():
+            # aquire and parse data from serial port
+            recvData = []
+            if ser.in_waiting:
+                line = ser.readline()
+                digitLine = line.strip()
+                if digitLine:
+                    if firstConversion:
+                        firstConversion = False
+                    else:
+                        value = float(digitLine)
+                        recvData.append(value)
+            if len(recvData) > 0:
+                q.put(recvData)
+            time.sleep(0.01)
+    except:
+        events["failure"].set()
+    if ser.is_open:
+         ser.close()
+
+def outData(p:connection,q:Queue):
     app = QtWidgets.QApplication([])
-    main = MainWindow(q)
+    main = MainWindow(p,q)
     main.show()
     app.exec()
 
@@ -74,22 +78,40 @@ def displayGraph(i, q, xs, ys):
     plt.gca().plot(xs, ys)
 
 def main():    
-    xs = [0]
-    ys = [0]
-    q = Queue()
-    # create figure to plot into
-
-    #ax.clear()
-    #ax.plot(xs,ys,label="Pa")
-    time.sleep(5)
-
-    inProcess = Process(None, target=getInData, args=(q,))
-    inProcess.start()
+    dataQ = Queue()
+    displayPipeC, displayPipeP = Pipe()
+    serialEvents = dict()
+    serialEvents["terminate"] = Event()
+    serialEvents["failure"] = Event()
+    inProcess = Process()
     
-    outProcess = Process(None, target=outData, args=(q,))
+    outProcess = Process(None, target=outData, args=(displayPipeC,dataQ,))
     outProcess.start()
-        
-    inProcess.join()
+    
+    while True:
+        # check for events from serial
+        if serialEvents["failure"].is_set():
+            # serial communication failed for some reason. Terminate Thread
+            serialEvents["terminate"].set()
+            inProcess.join()
+            serialEvents["failure"].clear()
+            serialEvents["terminate"].clear()
+
+        # check for messages from Main Window
+        while displayPipeP.poll():
+            msg = displayPipeP.recv()
+            if msg.type == MsgType.STARTSERIAL:
+            # start serial
+                if not inProcess.is_alive():
+                    portSettings = msg.payload
+                    inProcess = Process(None, target=getInData, args=(serialEvents, dataQ, portSettings))
+                    inProcess.start()
+            elif msg.type == MsgType.STOPSERIAL:
+                # stop serial
+                serialEvents["terminate"].set()
+                inProcess.join()
+                serialEvents["terminate"].clear()
+
 
 if __name__ == "__main__":
         main()
