@@ -24,7 +24,10 @@ def getInData(events,q:Queue,portSettings:SerialPortSettings):
     ser.port = portSettings.port
     ser.baudrate = portSettings.baudrate
     ser.timeout = portSettings.timeout
-    ser.open()
+    try:
+        ser.open()
+    except:
+        events["failure"].set()
     if ser.is_open == True:
         print("Serial port is open\n")
         print(ser, "\n")
