@@ -24,10 +24,11 @@ class MainWindow(QtWidgets.QMainWindow):
         super().__init__()
         self.settings = QSettings(QSettings.Format.IniFormat, QSettings.Scope.UserScope, "shiggytech", "infrasound")
         self.settings.setFallbacksEnabled(False)
+        self.settings.setValue("Settings/Version", "0.1")
         self.xs = [0] # sample in time
         self.ys = [0] # measured value in Pa
-        self.F = 50 # Samplerate F
-        self.N = 500 # number of samples retained in buffer
+        self.F = float(self.settings.value("Data/Samplerate", 50)) # Samplerate F
+        self.N = float(self.settings.value("Data/SamplesBuffered", 500)) # number of samples retained in buffer
         self.useSPL = True # Output fft data in dBSPL instead of Pa
         self.captureActive = False
         self.capturePaused = False
@@ -47,6 +48,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.buttonStopCapture = QPushButton("Stop")
         self.buttonPauseCapture = QPushButton("Pause")
         spinSamplerate = QDoubleSpinBox()
+        spinCaptureTime = QDoubleSpinBox()
 
 
 
@@ -85,7 +87,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # Settings Column 3: Display Settings
         settingsLayout.addWidget(QLabel("Data Display"),0,3)
         settingsLayout.addWidget(spinSamplerate,1,3)
-        settingsLayout.addWidget(QDoubleSpinBox(),2,3)
+        settingsLayout.addWidget(spinCaptureTime,2,3)
         settingsLayout.addWidget(QGroupBox(),3,3)
         
         spinSamplerate.setValue(self.F)
@@ -99,6 +101,17 @@ class MainWindow(QtWidgets.QMainWindow):
         spinSamplerate.setAccelerated(True)
         spinSamplerate.setKeyboardTracking(False)
         spinSamplerate.valueChanged.connect(self.setSamplerate)
+        spinCaptureTime.setValue(self.N/self.F)
+        spinCaptureTime.setMinimum(1)
+        spinCaptureTime.setMaximum(86400)
+        spinCaptureTime.setSingleStep(10.0)
+        spinCaptureTime.setStepType(QDoubleSpinBox.StepType.AdaptiveDecimalStepType)
+        spinCaptureTime.setSuffix(" s")
+        spinCaptureTime.setToolTip("Capturetime in Seconds")
+        spinCaptureTime.setCorrectionMode(QDoubleSpinBox.CorrectionMode.CorrectToNearestValue)
+        spinCaptureTime.setAccelerated(True)
+        spinCaptureTime.setKeyboardTracking(False)
+        spinCaptureTime.valueChanged.connect(self.setCaptureTime)
 
         # Settings Column 5: Saving Data
         settingsLayout.addWidget(QLabel("Data Saving"),0,5)
@@ -146,7 +159,7 @@ class MainWindow(QtWidgets.QMainWindow):
                         ys.append(i)
             except:
                 break
-        while(len(xs)>500):
+        while(len(xs)>self.N):
             xs.pop(0)
             ys.pop(0)
 
@@ -235,8 +248,19 @@ class MainWindow(QtWidgets.QMainWindow):
             self.buttonPauseCapture.setChecked(False)
 
     def setSamplerate(self, samplerate):
+        oldSampleRate = self.F
         if samplerate > 0:
             self.F = float(samplerate)
         else:
             self.F = 0.01
+        self.setCaptureTime(self.N*oldSampleRate)
+        self.settings.setValue("Data/Samplerate", self.F)
+
+    def setCaptureTime(self, captureTime):
+        if captureTime > 0:
+            self.N = captureTime*self.F
+        else:
+            self.N = self.F
+        self.settings.setValue("Data/SamplesBuffered", self.N)
+
         
