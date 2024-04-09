@@ -1,6 +1,6 @@
 from PyQt6 import QtCore, QtWidgets
 from PyQt6.QtWidgets import QApplication, QPushButton, QVBoxLayout, QWidget, QHBoxLayout, QGridLayout, QLabel, QComboBox, QDoubleSpinBox, QFrame, QGroupBox
-from PyQt6.QtCore import QTimer
+from PyQt6.QtCore import QTimer, QSettings
 from multiprocessing import Queue, connection
 import pyqtgraph as pg
 from scipy.fft import fft,fftfreq
@@ -21,7 +21,9 @@ class WindowMessage(NamedTuple):
 
 class MainWindow(QtWidgets.QMainWindow):
     def __init__(self, p:connection, q:Queue) -> None:
-        super().__init__()        
+        super().__init__()
+        self.settings = QSettings(QSettings.Format.IniFormat, QSettings.Scope.UserScope, "shiggytech", "infrasound")
+        self.settings.setFallbacksEnabled(False)
         self.xs = [0] # sample in time
         self.ys = [0] # measured value in Pa
         self.F = 50 # Samplerate F
@@ -73,6 +75,7 @@ class MainWindow(QtWidgets.QMainWindow):
         settingsLayout.addWidget(self.buttonStopCapture,6,1)
         buttonReloadSerial.clicked.connect(self.reloadSerial)
         self.comboSelectSerial.setEditable(True)
+        self.comboSelectSerial.setCurrentText(self.settings.value("Serial/Port", ""))
         self.buttonStartCapture.clicked.connect(self.startCapture)
         self.buttonStopCapture.clicked.connect(self.stopCapture)
         self.buttonStopCapture.setEnabled(False)
@@ -205,9 +208,11 @@ class MainWindow(QtWidgets.QMainWindow):
     
     def startCapture(self):
         from Infra import SerialPortSettings
-        msg = WindowMessage(MsgType.STARTSERIAL, SerialPortSettings(port=self.comboSelectSerial.currentText(), baudrate=38400))
+        port = self.comboSelectSerial.currentText()
+        msg = WindowMessage(MsgType.STARTSERIAL, SerialPortSettings(port=port, baudrate=38400))
         self.displayPipe.send(msg)
         self.buttonStartCapture.setEnabled(False)
+        self.settings.setValue("Serial/Port", port)
         QTimer.singleShot(1000, lambda : self.buttonStartCapture.setEnabled(not self.captureActive))
         
 
