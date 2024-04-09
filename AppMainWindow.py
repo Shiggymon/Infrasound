@@ -22,40 +22,36 @@ class WindowMessage(NamedTuple):
 class MainWindow(QtWidgets.QMainWindow):
     def __init__(self, p:connection, q:Queue) -> None:
         super().__init__()        
-        self.xs = [0]
-        self.ys = [0]
+        self.xs = [0] # sample in time
+        self.ys = [0] # measured value in Pa
+        self.F = 50 # Samplerate F
+        self.N = 500 # number of samples retained in buffer
         self.useSPL = True # Output fft data in dBSPL instead of Pa
         self.captureActive = False
         self.capturePaused = False
         self.serialPorts = list()
-        self.setWindowTitle("Infraschall Analyse")
+        self.setWindowTitle("Infrasound Analysis")
         mainWidget = QWidget()
         vLayout = QVBoxLayout()
         hTopLayout = QHBoxLayout()
         settingsLayout = QGridLayout()
         settingsSeparator1 = QFrame()
         settingsSeparator2 = QFrame()
-        plotGraph = pg.PlotWidget()
-        fftGraph = pg.PlotWidget()
+        self.plotGraph = pg.PlotWidget()
+        self.fftGraph = pg.PlotWidget()
         buttonReloadSerial = QPushButton("Reload")
-        buttonReloadSerial.clicked.connect(self.reloadSerial)
         self.comboSelectSerial = QComboBox()
-        self.comboSelectSerial.setEditable(True)
         self.buttonStartCapture = QPushButton("Start")
-        self.buttonStartCapture.clicked.connect(self.startCapture)
         self.buttonStopCapture = QPushButton("Stop")
-        self.buttonStopCapture.clicked.connect(self.stopCapture)
-        self.buttonStopCapture.setEnabled(False)
         self.buttonPauseCapture = QPushButton("Pause")
-        self.buttonPauseCapture.clicked.connect(self.pauseCapture)
-        self.buttonPauseCapture.setCheckable(True)
-        self.buttonPauseCapture.setEnabled(False)
+        spinSamplerate = QDoubleSpinBox()
+
 
 
         # Set Top Layout with 2 Graphs
         vLayout.addLayout(hTopLayout)
-        hTopLayout.addWidget(plotGraph)
-        hTopLayout.addWidget(fftGraph)
+        hTopLayout.addWidget(self.plotGraph)
+        hTopLayout.addWidget(self.fftGraph)
         # Set Bot Layyout with a settings Grid
         vLayout.addLayout(settingsLayout)
         settingsLayout.setHorizontalSpacing(20)
@@ -75,12 +71,31 @@ class MainWindow(QtWidgets.QMainWindow):
         settingsLayout.addWidget(self.buttonStartCapture,4,1)
         settingsLayout.addWidget(self.buttonPauseCapture,5,1)
         settingsLayout.addWidget(self.buttonStopCapture,6,1)
+        buttonReloadSerial.clicked.connect(self.reloadSerial)
+        self.comboSelectSerial.setEditable(True)
+        self.buttonStartCapture.clicked.connect(self.startCapture)
+        self.buttonStopCapture.clicked.connect(self.stopCapture)
+        self.buttonStopCapture.setEnabled(False)
+        self.buttonPauseCapture.clicked.connect(self.pauseCapture)
+        self.buttonPauseCapture.setCheckable(True)
+        self.buttonPauseCapture.setEnabled(False)
         # Settings Column 3: Display Settings
         settingsLayout.addWidget(QLabel("Data Display"),0,3)
-        settingsLayout.addWidget(QDoubleSpinBox(),1,3)
+        settingsLayout.addWidget(spinSamplerate,1,3)
         settingsLayout.addWidget(QDoubleSpinBox(),2,3)
         settingsLayout.addWidget(QGroupBox(),3,3)
         
+        spinSamplerate.setValue(self.F)
+        spinSamplerate.setMinimum(0.01)
+        spinSamplerate.setMaximum(100000)
+        spinSamplerate.setSingleStep(1.0)
+        spinSamplerate.setStepType(QDoubleSpinBox.StepType.AdaptiveDecimalStepType)
+        spinSamplerate.setSuffix(" S/s")
+        spinSamplerate.setToolTip("Samplerate in Samples per Second")
+        spinSamplerate.setCorrectionMode(QDoubleSpinBox.CorrectionMode.CorrectToNearestValue)
+        spinSamplerate.setAccelerated(True)
+        spinSamplerate.setKeyboardTracking(False)
+        spinSamplerate.valueChanged.connect(self.setSamplerate)
 
         # Settings Column 5: Saving Data
         settingsLayout.addWidget(QLabel("Data Saving"),0,5)
@@ -91,8 +106,12 @@ class MainWindow(QtWidgets.QMainWindow):
         # Add Layout to Main Window
         mainWidget.setLayout(vLayout)
         self.setCentralWidget(mainWidget)
-        self.lineT = plotGraph.plot(self.xs,self.ys)
-        self.lineF = fftGraph.plot(self.xs,self.ys)
+        self.lineT = self.plotGraph.plot(self.xs,self.ys)
+        self.plotGraph.getPlotItem().getAxis("bottom").setLabel("time ", units="s")
+        self.plotGraph.getPlotItem().getAxis("left").setLabel("Pressure ", units="Pa")
+        self.lineF = self.fftGraph.plot(self.xs,self.ys)
+        self.fftGraph.getPlotItem().getAxis("bottom").setLabel("Frequency ", units="Hz")
+        self.fftGraph.getPlotItem().getAxis("left").setLabel("Pressure ", units="dB_SPL")
         self.q = q
         self.displayPipe = p
 
@@ -132,12 +151,12 @@ class MainWindow(QtWidgets.QMainWindow):
          self.q2Vars(self.q, self.xs, self.ys)
 
     def updateTPlot(self):
-        xs = np.array(self.xs)
+        xs = np.array(self.xs)*1/self.F
         ys = np.array(self.ys)
         self.lineT.setData(xs, ys)
 
     def updateFPlot(self):
-        T = 1/50 # 50 Hz
+        T = 1/self.F 
         N = len(self.ys)
         ys = np.array(self.ys)
         yf = fft(ys)
@@ -209,7 +228,10 @@ class MainWindow(QtWidgets.QMainWindow):
             self.buttonPauseCapture.setText("Pause")
             self.capturePaused = False
             self.buttonPauseCapture.setChecked(False)
-        
 
-
+    def setSamplerate(self, samplerate):
+        if samplerate > 0:
+            self.F = float(samplerate)
+        else:
+            self.F = 0.01
         
