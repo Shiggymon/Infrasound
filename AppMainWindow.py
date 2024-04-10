@@ -1,7 +1,7 @@
 from PyQt6 import QtCore, QtWidgets
 from PyQt6.QtWidgets import QApplication, QPushButton, QVBoxLayout, QWidget, QHBoxLayout, QGridLayout, QLabel, QComboBox, QDoubleSpinBox, QFrame, QGroupBox, QRadioButton, QFileDialog
-from PyQt6.QtCore import QTimer, QSettings
-from PyQt6.QtGui import QImage
+from PyQt6.QtCore import QTimer, QSettings, QSize
+from PyQt6.QtGui import QImage, QGuiApplication
 from multiprocessing import Queue, connection
 import pyqtgraph as pg
 import pyqtgraph.exporters
@@ -25,6 +25,12 @@ class WindowMessage(NamedTuple):
 class MainWindow(QtWidgets.QMainWindow):
     def __init__(self, p:connection, q:Queue) -> None:
         super().__init__()
+        size = QGuiApplication.primaryScreen().availableSize()*0.7
+        if size.height() > 720:
+            size.setHeight(720)
+        if size.width() > 1440:
+            size.setWidth(1440)
+        self.resize(size)
         self.settings = QSettings(QSettings.Format.IniFormat, QSettings.Scope.UserScope, "shiggytech", "infrasound")
         self.settings.setFallbacksEnabled(False)
         self.settings.setValue("Settings/Version", "0.1")
@@ -57,6 +63,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.radioUnitSpl = QRadioButton("dbₛₚₗ")
         self.radioUnitLin = QRadioButton("Pa")
         unitLayout = QHBoxLayout()
+        self.capSampleLabel = QLabel()
+        self.capResolutionLabel = QLabel()
+        groupBoxCaptureInfo = QGroupBox("Capture Info")
+        captureInfoLayout = QVBoxLayout()
         buttonExportPng = QPushButton("Save (Image)")
         buttonExportCsv = QPushButton("Save (Text)")
 
@@ -67,9 +77,13 @@ class MainWindow(QtWidgets.QMainWindow):
         hTopLayout.addWidget(self.plotArea)
         self.plotArea.addItem(self.plotGraph, row=0, col=0)
         self.plotArea.addItem(self.fftGraph, row=0, col=1)
-#        hTopLayout.addWidget(self.plotGraph)
-#        hTopLayout.addWidget(self.fftGraph)
-        # Set Bot Layyout with a settings Grid
+        self.plotGraph.setMenuEnabled(False)
+        self.plotGraph.setMouseEnabled(x=False, y=False)
+        self.fftGraph.setMenuEnabled(False)
+        self.fftGraph.setMouseEnabled(x=False, y=False)
+
+
+        # Set Bot Layout with a settings Grid
         vLayout.addLayout(settingsLayout)
         settingsLayout.setHorizontalSpacing(20)
 
@@ -102,6 +116,7 @@ class MainWindow(QtWidgets.QMainWindow):
         settingsLayout.addWidget(spinSamplerate,1,3)
         settingsLayout.addWidget(spinCaptureTime,2,3)
         settingsLayout.addWidget(groupBoxUnit,3,3)
+        settingsLayout.addWidget(groupBoxCaptureInfo,4,3,3,1)
         
         spinSamplerate.setValue(self.F)
         spinSamplerate.setMinimum(0.01)
@@ -139,6 +154,11 @@ class MainWindow(QtWidgets.QMainWindow):
             self.radioUnitSpl.setChecked(True)
         self.radioUnitLin.clicked.connect(self.selectUnit)
         self.radioUnitSpl.clicked.connect(self.selectUnit)
+        captureInfoLayout.addWidget(self.capSampleLabel)
+        captureInfoLayout.addWidget(self.capResolutionLabel)
+        captureInfoLayout.addStretch()
+        groupBoxCaptureInfo.setLayout(captureInfoLayout)
+        self.updateCaptureInfo()
 
 
         # Settings Column 5: Saving Data
@@ -197,12 +217,13 @@ class MainWindow(QtWidgets.QMainWindow):
             ys.pop(0)
 
     def updateData(self):
-         self.q2Vars(self.q, self.xs, self.ys)
+        self.q2Vars(self.q, self.xs, self.ys)
 
     def updateTPlot(self):
         xs = np.array(self.xs)*1/self.F
         ys = np.array(self.ys)
         self.lineT.setData(xs, ys)
+        self.updateCaptureInfo()
 
     def updateFPlot(self):
         T = 1/self.F 
@@ -257,6 +278,10 @@ class MainWindow(QtWidgets.QMainWindow):
     
     def startCapture(self):
         from Infra import SerialPortSettings
+        self.q2Vars(self.q, self.xs, self.ys)
+        self.xs = [0]
+        self.ys = [0]
+        self.updDataTimer.start()
         port = self.comboSelectSerial.currentText()
         msg = WindowMessage(MsgType.STARTSERIAL, SerialPortSettings(port=port, baudrate=38400))
         self.displayPipe.send(msg)
@@ -268,6 +293,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def stopCapture(self):
         msg = WindowMessage(MsgType.STOPSERIAL)
         self.displayPipe.send(msg)
+        self.updDataTimer.stop()
         
 
     def pauseCapture(self, paused=None, pause=None):
@@ -289,7 +315,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.F = float(samplerate)
         else:
             self.F = 0.01
-        self.setCaptureTime(self.N*oldSampleRate)
+        self.setCaptureTime(self.N/oldSampleRate)
         self.settings.setValue("Data/Samplerate", self.F)
 
     def setCaptureTime(self, captureTime):
@@ -327,5 +353,9 @@ class MainWindow(QtWidgets.QMainWindow):
                 hdrString = "Data Recorded and exported with Shiggytech's Infrasound. For More information visit ..."
                 np.savetxt(fname=targetPath, X=data, fmt="%.5g", delimiter=";", header=hdrString)
 
+    def updateCaptureInfo(self):
+        N = len(self.ys)
+        self.capSampleLabel.setText("max Samples retained: {:.0f}".format(self.N))
+        self.capResolutionLabel.setText("Resolution: {:.3f} Hz".format(self.F/N))
 
         
