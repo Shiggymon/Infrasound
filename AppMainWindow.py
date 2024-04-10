@@ -1,6 +1,7 @@
 from PyQt6 import QtCore, QtWidgets
-from PyQt6.QtWidgets import QApplication, QPushButton, QVBoxLayout, QWidget, QHBoxLayout, QGridLayout, QLabel, QComboBox, QDoubleSpinBox, QFrame, QGroupBox, QRadioButton
+from PyQt6.QtWidgets import QApplication, QPushButton, QVBoxLayout, QWidget, QHBoxLayout, QGridLayout, QLabel, QComboBox, QDoubleSpinBox, QFrame, QGroupBox, QRadioButton, QFileDialog
 from PyQt6.QtCore import QTimer, QSettings
+from PyQt6.QtGui import QImage
 from multiprocessing import Queue, connection
 import pyqtgraph as pg
 import pyqtgraph.exporters
@@ -9,6 +10,7 @@ import numpy as np
 import serial.tools.list_ports
 from enum import Enum, auto
 from typing import NamedTuple
+from datetime import datetime
 
 class MsgType(Enum):
     STARTSERIAL = auto()
@@ -41,7 +43,7 @@ class MainWindow(QtWidgets.QMainWindow):
         settingsLayout = QGridLayout()
         settingsSeparator1 = QFrame()
         settingsSeparator2 = QFrame()
-        plotArea = pg.GraphicsLayoutWidget()
+        self.plotArea = pg.GraphicsLayoutWidget()
         self.plotGraph = pg.PlotItem()
         self.fftGraph = pg.PlotItem()
         buttonReloadSerial = QPushButton("Reload")
@@ -55,14 +57,16 @@ class MainWindow(QtWidgets.QMainWindow):
         self.radioUnitSpl = QRadioButton("dbₛₚₗ")
         self.radioUnitLin = QRadioButton("Pa")
         unitLayout = QHBoxLayout()
+        buttonExportPng = QPushButton("Save (Image)")
+        buttonExportCsv = QPushButton("Save (Text)")
 
 
 
         # Set Top Layout with 2 Graphs
         vLayout.addLayout(hTopLayout)
-        hTopLayout.addWidget(plotArea)
-        plotArea.addItem(self.plotGraph, row=0, col=0)
-        plotArea.addItem(self.fftGraph, row=0, col=1)
+        hTopLayout.addWidget(self.plotArea)
+        self.plotArea.addItem(self.plotGraph, row=0, col=0)
+        self.plotArea.addItem(self.fftGraph, row=0, col=1)
 #        hTopLayout.addWidget(self.plotGraph)
 #        hTopLayout.addWidget(self.fftGraph)
         # Set Bot Layyout with a settings Grid
@@ -139,8 +143,10 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Settings Column 5: Saving Data
         settingsLayout.addWidget(QLabel("Data Saving"),0,5)
-        settingsLayout.addWidget(QPushButton("Save (png)"),3,5)
-        settingsLayout.addWidget(QPushButton("Save (csv)"),4,5)
+        settingsLayout.addWidget(buttonExportPng,4,5)
+        settingsLayout.addWidget(buttonExportCsv,5,5)
+        buttonExportPng.clicked.connect(lambda :self.exportData(png=True))
+        buttonExportCsv.clicked.connect(lambda :self.exportData(csv=True))
         
 
         # Add Layout to Main Window
@@ -303,6 +309,23 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.useSPL = True
                 self.fftGraph.getAxis("left").setLabel("Pressure ", units="dbₛₚₗ")
                 self.settings.setValue("Display/Unit", "dbSPL")
+
+    def exportData(self, png=False, csv=False):
+        defaultName = datetime.now().strftime("%Y-%m-%d-%H%M%S")
+        if png:
+            pngExporter = pyqtgraph.exporters.ImageExporter(self.plotArea.scene())
+            targetPath, _ = QFileDialog.getSaveFileName(caption="Save Image", directory=defaultName+".png", filter="Images (*.png *.jpg)")
+            if targetPath:
+                img =  QImage(pngExporter.export(toBytes=True))
+                img.save(targetPath)
+        if csv:
+            targetPath, _ = QFileDialog.getSaveFileName(caption="Save Text", directory=defaultName+".csv", filter="Text (*.csv '.txt)")
+            if targetPath:
+                xs = np.array(self.xs)/self.F
+                ys = np.array(self.ys)
+                data = np.transpose((xs, ys))
+                hdrString = "Data Recorded and exported with Shiggytech's Infrasound. For More information visit ..."
+                np.savetxt(fname=targetPath, X=data, fmt="%.5g", delimiter=";", header=hdrString)
 
 
         
