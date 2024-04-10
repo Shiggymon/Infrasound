@@ -3,6 +3,7 @@ from PyQt6.QtWidgets import QApplication, QPushButton, QVBoxLayout, QWidget, QHB
 from PyQt6.QtCore import QTimer, QSettings
 from multiprocessing import Queue, connection
 import pyqtgraph as pg
+import pyqtgraph.exporters
 from scipy.fft import fft,fftfreq
 import numpy as np
 import serial.tools.list_ports
@@ -40,8 +41,9 @@ class MainWindow(QtWidgets.QMainWindow):
         settingsLayout = QGridLayout()
         settingsSeparator1 = QFrame()
         settingsSeparator2 = QFrame()
-        self.plotGraph = pg.PlotWidget()
-        self.fftGraph = pg.PlotWidget()
+        plotArea = pg.GraphicsLayoutWidget()
+        self.plotGraph = pg.PlotItem()
+        self.fftGraph = pg.PlotItem()
         buttonReloadSerial = QPushButton("Reload")
         self.comboSelectSerial = QComboBox()
         self.buttonStartCapture = QPushButton("Start")
@@ -58,8 +60,11 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Set Top Layout with 2 Graphs
         vLayout.addLayout(hTopLayout)
-        hTopLayout.addWidget(self.plotGraph)
-        hTopLayout.addWidget(self.fftGraph)
+        hTopLayout.addWidget(plotArea)
+        plotArea.addItem(self.plotGraph, row=0, col=0)
+        plotArea.addItem(self.fftGraph, row=0, col=1)
+#        hTopLayout.addWidget(self.plotGraph)
+#        hTopLayout.addWidget(self.fftGraph)
         # Set Bot Layyout with a settings Grid
         vLayout.addLayout(settingsLayout)
         settingsLayout.setHorizontalSpacing(20)
@@ -142,14 +147,14 @@ class MainWindow(QtWidgets.QMainWindow):
         mainWidget.setLayout(vLayout)
         self.setCentralWidget(mainWidget)
         self.lineT = self.plotGraph.plot(self.xs,self.ys)
-        self.plotGraph.getPlotItem().getAxis("bottom").setLabel("time ", units="s")
-        self.plotGraph.getPlotItem().getAxis("left").setLabel("Pressure ", units="Pa")
+        self.plotGraph.getAxis("bottom").setLabel("time ", units="s")
+        self.plotGraph.getAxis("left").setLabel("Pressure ", units="Pa")
         self.lineF = self.fftGraph.plot(self.xs,self.ys)
-        self.fftGraph.getPlotItem().getAxis("bottom").setLabel("Frequency ", units="Hz")
+        self.fftGraph.getAxis("bottom").setLabel("Frequency ", units="Hz")
         if self.useSPL:
-            self.fftGraph.getPlotItem().getAxis("left").setLabel("Pressure ", units="dB_SPL")
+            self.fftGraph.getAxis("left").setLabel("Pressure ", units="dB_SPL")
         else:
-            self.fftGraph.getPlotItem().getAxis("left").setLabel("Pressure ", units="Pa")
+            self.fftGraph.getAxis("left").setLabel("Pressure ", units="Pa")
         self.q = q
         self.displayPipe = p
 
@@ -292,11 +297,11 @@ class MainWindow(QtWidgets.QMainWindow):
         if active:
             if self.radioUnitLin.isChecked():
                 self.useSPL = False
-                self.fftGraph.getPlotItem().getAxis("left").setLabel("Pressure ", units="Pa")
+                self.fftGraph.getAxis("left").setLabel("Pressure ", units="Pa")
                 self.settings.setValue("Display/Unit", "Pa")
             elif self.radioUnitSpl.isChecked():
                 self.useSPL = True
-                self.fftGraph.getPlotItem().getAxis("left").setLabel("Pressure ", units="dbₛₚₗ")
+                self.fftGraph.getAxis("left").setLabel("Pressure ", units="dbₛₚₗ")
                 self.settings.setValue("Display/Unit", "dbSPL")
 
 
