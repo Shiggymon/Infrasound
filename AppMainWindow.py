@@ -196,13 +196,16 @@ class MainWindow(QtWidgets.QMainWindow):
     def updateFPlot(self):
         T = 1/self.F 
         N = len(self.ys)
-        ys = np.array(self.ys)
-        yf = fft(ys)
-        xf = fftfreq(N, T)[:N//2]
-        if self.useSPL:
-            self.lineF.setData(xf, self.lin2dbSPL(2.0 * abs(yf[0:N//2])))
-        else:
-            self.lineF.setData(xf, 2.0 * abs(yf[0:N//2]))
+        if N > 1:
+            if N%2:
+                N += 1
+            ys = np.array(self.ys)
+            yf = fft(ys, n=N, norm="forward")
+            xf = fftfreq(N, T)[:N//2]
+            if self.useSPL:
+                self.lineF.setData(xf, self.lin2dbSPL(2.0 * abs(yf[0:N//2])))
+            else:
+                self.lineF.setData(xf, 2.0 * abs(yf[0:N//2]))
     
     def updateComms(self):
         while self.displayPipe.poll():
