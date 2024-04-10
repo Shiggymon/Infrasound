@@ -1,5 +1,5 @@
 from PyQt6 import QtCore, QtWidgets
-from PyQt6.QtWidgets import QApplication, QPushButton, QVBoxLayout, QWidget, QHBoxLayout, QGridLayout, QLabel, QComboBox, QDoubleSpinBox, QFrame, QGroupBox
+from PyQt6.QtWidgets import QApplication, QPushButton, QVBoxLayout, QWidget, QHBoxLayout, QGridLayout, QLabel, QComboBox, QDoubleSpinBox, QFrame, QGroupBox, QRadioButton
 from PyQt6.QtCore import QTimer, QSettings
 from multiprocessing import Queue, connection
 import pyqtgraph as pg
@@ -49,6 +49,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.buttonPauseCapture = QPushButton("Pause")
         spinSamplerate = QDoubleSpinBox()
         spinCaptureTime = QDoubleSpinBox()
+        groupBoxUnit = QGroupBox("Unit")
+        self.radioUnitSpl = QRadioButton("dbₛₚₗ")
+        self.radioUnitLin = QRadioButton("Pa")
+        unitLayout = QHBoxLayout()
 
 
 
@@ -88,7 +92,7 @@ class MainWindow(QtWidgets.QMainWindow):
         settingsLayout.addWidget(QLabel("Data Display"),0,3)
         settingsLayout.addWidget(spinSamplerate,1,3)
         settingsLayout.addWidget(spinCaptureTime,2,3)
-        settingsLayout.addWidget(QGroupBox(),3,3)
+        settingsLayout.addWidget(groupBoxUnit,3,3)
         
         spinSamplerate.setValue(self.F)
         spinSamplerate.setMinimum(0.01)
@@ -112,6 +116,21 @@ class MainWindow(QtWidgets.QMainWindow):
         spinCaptureTime.setAccelerated(True)
         spinCaptureTime.setKeyboardTracking(False)
         spinCaptureTime.valueChanged.connect(self.setCaptureTime)
+        unitLayout.addWidget(self.radioUnitSpl)
+        unitLayout.addWidget(self.radioUnitLin)
+        unitLayout.addStretch()
+        groupBoxUnit.setLayout(unitLayout)
+        if self.settings.value("Display/Unit") == "Pa":
+            self.radioUnitLin.setChecked(True)
+            self.useSPL = False
+        elif self.settings.value("Display/Unit") == "dbSPL":
+            self.radioUnitSpl.setChecked(True)
+            self.useSPL = True
+        else:
+            self.radioUnitSpl.setChecked(True)
+        self.radioUnitLin.clicked.connect(self.selectUnit)
+        self.radioUnitSpl.clicked.connect(self.selectUnit)
+
 
         # Settings Column 5: Saving Data
         settingsLayout.addWidget(QLabel("Data Saving"),0,5)
@@ -127,7 +146,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.plotGraph.getPlotItem().getAxis("left").setLabel("Pressure ", units="Pa")
         self.lineF = self.fftGraph.plot(self.xs,self.ys)
         self.fftGraph.getPlotItem().getAxis("bottom").setLabel("Frequency ", units="Hz")
-        self.fftGraph.getPlotItem().getAxis("left").setLabel("Pressure ", units="dB_SPL")
+        if self.useSPL:
+            self.fftGraph.getPlotItem().getAxis("left").setLabel("Pressure ", units="dB_SPL")
+        else:
+            self.fftGraph.getPlotItem().getAxis("left").setLabel("Pressure ", units="Pa")
         self.q = q
         self.displayPipe = p
 
@@ -262,5 +284,17 @@ class MainWindow(QtWidgets.QMainWindow):
         else:
             self.N = self.F
         self.settings.setValue("Data/SamplesBuffered", self.N)
+    
+    def selectUnit(self, active):
+        if active:
+            if self.radioUnitLin.isChecked():
+                self.useSPL = False
+                self.fftGraph.getPlotItem().getAxis("left").setLabel("Pressure ", units="Pa")
+                self.settings.setValue("Display/Unit", "Pa")
+            elif self.radioUnitSpl.isChecked():
+                self.useSPL = True
+                self.fftGraph.getPlotItem().getAxis("left").setLabel("Pressure ", units="dbₛₚₗ")
+                self.settings.setValue("Display/Unit", "dbSPL")
+
 
         
