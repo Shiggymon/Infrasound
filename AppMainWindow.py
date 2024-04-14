@@ -17,6 +17,7 @@ class MsgType(Enum):
     STOPSERIAL = auto()
     SERIALSTARTED = auto()
     SERIALSTOPPED = auto()
+    STOPWINDOW = auto()
 
 class WindowMessage(NamedTuple):
     type: MsgType
@@ -373,5 +374,9 @@ class MainWindow(QtWidgets.QMainWindow):
         N = len(self.ys)
         self.capSampleLabel.setText("max Samples retained: {:.0f}".format(self.N))
         self.capResolutionLabel.setText("Resolution: {:.3f} Hz".format(self.F/N))
-
         
+    def closeEvent(self, event):
+        self.stopCapture()
+        msg = WindowMessage(MsgType.STOPWINDOW)
+        self.displayPipe.send(msg)
+        super().closeEvent(event)
