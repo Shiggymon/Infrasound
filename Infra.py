@@ -90,8 +90,8 @@ def main():
     
     outProcess = Process(None, target=outData, args=(displayPipeC,dataQ,))
     outProcess.start()
-    
-    while True:
+    mainActive = True
+    while mainActive:
         # check for events from serial
         if serialEvents["failure"].is_set():
             # serial communication failed for some reason. Terminate Thread
@@ -114,9 +114,16 @@ def main():
             elif msg.type == MsgType.STOPSERIAL:
                 # stop serial
                 serialEvents["terminate"].set()
-                inProcess.join()
+                if inProcess.is_alive():
+                    inProcess.join()
                 serialEvents["terminate"].clear()
                 displayPipeP.send(WindowMessage(MsgType.SERIALSTOPPED))
+            elif msg.type == MsgType.STOPWINDOW:
+                outProcess.join()
+                if inProcess.is_alive():
+                    inProcess.join()
+                mainActive = False
+                
 
 
 if __name__ == "__main__":
