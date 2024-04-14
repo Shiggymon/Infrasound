@@ -77,10 +77,18 @@ class MainWindow(QtWidgets.QMainWindow):
         hTopLayout.addWidget(self.plotArea)
         self.plotArea.addItem(self.plotGraph, row=0, col=0)
         self.plotArea.addItem(self.fftGraph, row=0, col=1)
+        self.plotArea.ci.layout.setColumnStretchFactor(0, 1)
+        self.plotArea.ci.layout.setColumnStretchFactor(1, 1)
+        self.plotArea.setBackground("w")
         self.plotGraph.setMenuEnabled(False)
         self.plotGraph.setMouseEnabled(x=False, y=False)
+        self.plotGraph.enableAutoRange(enable=False)
+        self.plotGraph.hideButtons()
         self.fftGraph.setMenuEnabled(False)
         self.fftGraph.setMouseEnabled(x=False, y=False)
+        self.fftGraph.enableAutoRange(enable=False)
+        self.fftGraph.hideButtons()
+        
 
 
         # Set Bot Layout with a settings Grid
@@ -172,10 +180,11 @@ class MainWindow(QtWidgets.QMainWindow):
         # Add Layout to Main Window
         mainWidget.setLayout(vLayout)
         self.setCentralWidget(mainWidget)
-        self.lineT = self.plotGraph.plot(self.xs,self.ys)
+        plotPen = pg.mkPen(color=(10, 10, 10), width=2)
+        self.lineT = self.plotGraph.plot(self.xs,self.ys, pen=plotPen)
         self.plotGraph.getAxis("bottom").setLabel("time ", units="s")
         self.plotGraph.getAxis("left").setLabel("Pressure ", units="Pa")
-        self.lineF = self.fftGraph.plot(self.xs,self.ys)
+        self.lineF = self.fftGraph.plot(self.xs,self.ys, pen=plotPen)
         self.fftGraph.getAxis("bottom").setLabel("Frequency ", units="Hz")
         if self.useSPL:
             self.fftGraph.getAxis("left").setLabel("Pressure ", units="dB_SPL")
@@ -223,6 +232,8 @@ class MainWindow(QtWidgets.QMainWindow):
         xs = np.array(self.xs)*1/self.F
         ys = np.array(self.ys)
         self.lineT.setData(xs, ys)
+        self.plotGraph.setXRange(min=xs[0], max=xs[-1], padding=0)
+        self.plotGraph.setYRange(min=np.min(ys), max=np.max(ys), padding=0.1)
         self.updateCaptureInfo()
 
     def updateFPlot(self):
@@ -235,9 +246,14 @@ class MainWindow(QtWidgets.QMainWindow):
             yf = fft(ys, n=N, norm="forward")
             xf = fftfreq(N, T)[:N//2]
             if self.useSPL:
-                self.lineF.setData(xf, self.lin2dbSPL(2.0 * abs(yf[0:N//2])))
+                yfsLog = self.lin2dbSPL(2.0 * abs(yf[0:N//2]))
+                self.lineF.setData(xf, yfsLog)
+                self.fftGraph.setYRange(min=np.min(yfsLog), max=np.max(yfsLog), padding=0.1)
             else:
-                self.lineF.setData(xf, 2.0 * abs(yf[0:N//2]))
+                yfs = 2.0 * abs(yf[0:N//2])
+                self.lineF.setData(xf, yfs)
+                self.fftGraph.setYRange(min=np.min(yfs), max=np.max(yfs), padding=0.1)
+            self.fftGraph.setXRange(min=xf[0], max=xf[-1], padding=0)
     
     def updateComms(self):
         while self.displayPipe.poll():
