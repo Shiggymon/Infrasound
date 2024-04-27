@@ -1,8 +1,6 @@
 from PyQt6.QtCore import Qt
-import matplotlib.pyplot as plt
-import matplotlib.animation as animation
 import serial
-from multiprocessing import Process, Event, Queue, Pipe, connection
+from multiprocessing import Process, Event, Queue, Pipe, connection, freeze_support
 from multiprocessing.shared_memory import ShareableList
 import numpy as np
 import time
@@ -75,11 +73,6 @@ def q2Vars(q, xs, ys):
         xs.pop(0)
         ys.pop(0)
 
-def displayGraph(i, q, xs, ys):
-    q2Vars(q, xs, ys)
-    plt.gca().clear()
-    plt.gca().plot(xs, ys)
-
 def main():    
     dataQ = Queue()
     displayPipeC, displayPipeP = Pipe()
@@ -127,4 +120,7 @@ def main():
 
 
 if __name__ == "__main__":
-        main()
+    freeze_support()
+    print("starting...")
+    
+    main()
