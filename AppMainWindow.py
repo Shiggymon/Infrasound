@@ -182,10 +182,14 @@ class MainWindow(QtWidgets.QMainWindow):
         mainWidget.setLayout(vLayout)
         self.setCentralWidget(mainWidget)
         plotPen = pg.mkPen(color=(10, 10, 10), width=2)
+        evPen = pg.mkPen(color=(240, 10, 10), width=2) # marker Pen for extreme values
+        evBrush = pg.mkBrush(None) # transparent Brush for extreme values
         self.lineT = self.plotGraph.plot(self.xs,self.ys, pen=plotPen)
         self.plotGraph.getAxis("bottom").setLabel("time ", units="s")
         self.plotGraph.getAxis("left").setLabel("Pressure ", units="Pa")
+        self.fftGraph.addLegend(offset=(-2, 2), pen=plotPen, brush=pg.mkBrush(color=(255, 255, 255, 210)), labelTextColor=plotPen.color())
         self.lineF = self.fftGraph.plot(self.xs,self.ys, pen=plotPen)
+        self.lineFMax = self.fftGraph.plot(x=[12], y=[10], symbol="t1", pen=pg.mkPen(None), symbolPen=evPen, symbolBrush=evBrush, name="maximum") # use initial values that are visible
         self.fftGraph.getAxis("bottom").setLabel("Frequency ", units="Hz")
         if self.useSPL:
             self.fftGraph.getAxis("left").setLabel("Pressure ", units="dB_SPL")
@@ -247,13 +251,19 @@ class MainWindow(QtWidgets.QMainWindow):
             yf = fft(ys, n=N, norm="forward")
             xf = fftfreq(N, T)[:N//2]
             if self.useSPL:
-                yfsLog = self.lin2dbSPL(2.0 * abs(yf[0:N//2]))
+                yfsLog = self.lin2dbSPL(2.0 * abs(yf[0:N//2]))  
+                yfsMaxIdx = np.argmax(yfsLog)
                 self.lineF.setData(xf, yfsLog)
+                self.lineFMax.setData([xf[yfsMaxIdx]], [yfsLog[yfsMaxIdx]])
                 self.fftGraph.setYRange(min=np.min(yfsLog), max=np.max(yfsLog), padding=0.1)
+                self.fftGraph.addLegend().getLabel(self.lineFMax).setText("max: {maxval:.2f} dbₛₚₗ @ {freq:.1f} Hz".format(maxval=yfsLog[yfsMaxIdx], freq=xf[yfsMaxIdx]))
             else:
                 yfs = 2.0 * abs(yf[0:N//2])
+                yfsMaxIdx = np.argmax(yfs)
                 self.lineF.setData(xf, yfs)
+                self.lineFMax.setData([xf[yfsMaxIdx]], [yfs[yfsMaxIdx]])
                 self.fftGraph.setYRange(min=np.min(yfs), max=np.max(yfs), padding=0.1)
+                self.fftGraph.addLegend().getLabel(self.lineFMax).setText("max: {maxval:.2f} Pa @ {freq:.1f} Hz".format(maxval=yfs[yfsMaxIdx], freq=xf[yfsMaxIdx]))
             self.fftGraph.setXRange(min=xf[0], max=xf[-1], padding=0)
     
     def updateComms(self):
