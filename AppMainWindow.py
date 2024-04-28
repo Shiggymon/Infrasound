@@ -39,7 +39,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.ys = [0] # measured value in Pa
         self.F = float(self.settings.value("Data/Samplerate", 50)) # Samplerate F
         self.N = float(self.settings.value("Data/SamplesBuffered", 500)) # number of samples retained in buffer
-        self.useSPL = True # Output fft data in dBSPL instead of Pa
+        self.useSPL = self.settings.value("Display/Unit", "dbSPL") == "dbSPL" # Output fft data in dBSPL instead of Pa
         self.captureActive = False
         self.capturePaused = False
         self.serialPorts = list()
@@ -60,9 +60,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self.buttonPauseCapture = QPushButton("Pause")
         spinSamplerate = QDoubleSpinBox()
         spinCaptureTime = QDoubleSpinBox()
-        groupBoxUnit = QGroupBox("Unit")
-        self.radioUnitSpl = QRadioButton("dbₛₚₗ")
-        self.radioUnitLin = QRadioButton("Pa")
         unitLayout = QHBoxLayout()
         self.capSampleLabel = QLabel()
         self.capResolutionLabel = QLabel()
@@ -124,7 +121,6 @@ class MainWindow(QtWidgets.QMainWindow):
         settingsLayout.addWidget(QLabel("Data Display"),0,3)
         settingsLayout.addWidget(spinSamplerate,1,3)
         settingsLayout.addWidget(spinCaptureTime,2,3)
-        settingsLayout.addWidget(groupBoxUnit,3,3)
         settingsLayout.addWidget(groupBoxCaptureInfo,4,3,3,1)
         
         spinSamplerate.setValue(self.F)
@@ -149,20 +145,6 @@ class MainWindow(QtWidgets.QMainWindow):
         spinCaptureTime.setAccelerated(True)
         spinCaptureTime.setKeyboardTracking(False)
         spinCaptureTime.valueChanged.connect(self.setCaptureTime)
-        unitLayout.addWidget(self.radioUnitSpl)
-        unitLayout.addWidget(self.radioUnitLin)
-        unitLayout.addStretch()
-        groupBoxUnit.setLayout(unitLayout)
-        if self.settings.value("Display/Unit") == "Pa":
-            self.radioUnitLin.setChecked(True)
-            self.useSPL = False
-        elif self.settings.value("Display/Unit") == "dbSPL":
-            self.radioUnitSpl.setChecked(True)
-            self.useSPL = True
-        else:
-            self.radioUnitSpl.setChecked(True)
-        self.radioUnitLin.clicked.connect(self.selectUnit)
-        self.radioUnitSpl.clicked.connect(self.selectUnit)
         captureInfoLayout.addWidget(self.capSampleLabel)
         captureInfoLayout.addWidget(self.capResolutionLabel)
         captureInfoLayout.addStretch()
@@ -352,17 +334,6 @@ class MainWindow(QtWidgets.QMainWindow):
             self.N = self.F
         self.settings.setValue("Data/SamplesBuffered", self.N)
     
-    def selectUnit(self, active):
-        if active:
-            if self.radioUnitLin.isChecked():
-                self.useSPL = False
-                self.fftGraph.getAxis("left").setLabel("Pressure ", units="Pa")
-                self.settings.setValue("Display/Unit", "Pa")
-            elif self.radioUnitSpl.isChecked():
-                self.useSPL = True
-                self.fftGraph.getAxis("left").setLabel("Pressure ", units="dbₛₚₗ")
-                self.settings.setValue("Display/Unit", "dbSPL")
-
     def exportData(self, png=False, csv=False):
         defaultName = datetime.now().strftime("%Y-%m-%d-%H%M%S")
         if png:
