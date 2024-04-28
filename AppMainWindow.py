@@ -1,7 +1,7 @@
 from PyQt6 import QtCore, QtWidgets
 from PyQt6.QtWidgets import QApplication, QPushButton, QVBoxLayout, QWidget, QHBoxLayout, QGridLayout, QLabel, QComboBox, QDoubleSpinBox, QFrame, QGroupBox, QRadioButton, QFileDialog
-from PyQt6.QtCore import QTimer, QSettings, QSize
-from PyQt6.QtGui import QImage, QGuiApplication
+from PyQt6.QtCore import QTimer, QSettings, QSize, QRegularExpression
+from PyQt6.QtGui import QImage, QGuiApplication, QRegularExpressionValidator, QValidator
 from multiprocessing import Queue, connection
 import pyqtgraph as pg
 import pyqtgraph.exporters
@@ -9,7 +9,7 @@ from scipy.fft import fft,fftfreq
 import numpy as np
 import serial.tools.list_ports
 from enum import Enum, auto
-from typing import NamedTuple
+from typing import NamedTuple, Tuple
 from datetime import datetime
 
 class MsgType(Enum):
@@ -40,6 +40,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.F = float(self.settings.value("Data/Samplerate", 50)) # Samplerate F
         self.N = float(self.settings.value("Data/SamplesBuffered", 500)) # number of samples retained in buffer
         self.useSPL = self.settings.value("Display/Unit", "dbSPL") == "dbSPL" # Output fft data in dBSPL instead of Pa
+        self.fftRange = ["min", "max"]
         self.captureActive = False
         self.capturePaused = False
         self.serialPorts = list()
@@ -50,6 +51,7 @@ class MainWindow(QtWidgets.QMainWindow):
         settingsLayout = QGridLayout()
         settingsSeparator1 = QFrame()
         settingsSeparator2 = QFrame()
+        settingsSeparator3 = QFrame()
         self.plotArea = pg.GraphicsLayoutWidget()
         self.plotGraph = pg.PlotItem()
         self.fftGraph = pg.PlotItem()
@@ -60,11 +62,14 @@ class MainWindow(QtWidgets.QMainWindow):
         self.buttonPauseCapture = QPushButton("Pause")
         spinSamplerate = QDoubleSpinBox()
         spinCaptureTime = QDoubleSpinBox()
-        unitLayout = QHBoxLayout()
         self.capSampleLabel = QLabel()
         self.capResolutionLabel = QLabel()
         groupBoxCaptureInfo = QGroupBox("Capture Info")
         captureInfoLayout = QVBoxLayout()
+        groupBoxFftTime = QGroupBox("FFT Range")
+        fftTimeLayout = QHBoxLayout()
+        spinFftStartTime = self.CustomDoubleSpinBox()
+        spinFftEndTime = self.CustomDoubleSpinBox()
         buttonExportPng = QPushButton("Save (Image)")
         buttonExportCsv = QPushButton("Save (Text)")
 
@@ -95,12 +100,17 @@ class MainWindow(QtWidgets.QMainWindow):
 
         settingsLayout.addWidget(settingsSeparator1,1, 2, 6, 2)
         settingsLayout.addWidget(settingsSeparator2,1, 4, 6, 4)
+        settingsLayout.addWidget(settingsSeparator3,1, 6, 6, 6)
         settingsSeparator1.setFrameShape(QFrame.Shape.VLine)
         settingsSeparator2.setFrameShape(QFrame.Shape.VLine)
+        settingsSeparator3.setFrameShape(QFrame.Shape.VLine)
         settingsLayout.setColumnStretch(1,1)
         settingsLayout.setColumnStretch(3,1)
         settingsLayout.setColumnStretch(5,1)
+        settingsLayout.setColumnStretch(7,1)
+
         # Settings Column 1: Serial Connection and data Recording
+        # Settings Column for selecting the serial connection and cntroling the capture
         settingsLayout.addWidget(QLabel("Data Capturing"),0,1)
         settingsLayout.addWidget(self.comboSelectSerial,1,1)
         settingsLayout.addWidget(buttonReloadSerial,2,1)
@@ -117,8 +127,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.buttonPauseCapture.clicked.connect(self.pauseCapture)
         self.buttonPauseCapture.setCheckable(True)
         self.buttonPauseCapture.setEnabled(False)
-        # Settings Column 3: Display Settings
-        settingsLayout.addWidget(QLabel("Data Display"),0,3)
+        
+        # Settings Column 3: Data Settings
+        # Settings column for setting input parameters like capture time and samplerate
+        settingsLayout.addWidget(QLabel("Data Settings"),0,3)
         settingsLayout.addWidget(spinSamplerate,1,3)
         settingsLayout.addWidget(spinCaptureTime,2,3)
         settingsLayout.addWidget(groupBoxCaptureInfo,4,3,3,1)
@@ -151,11 +163,35 @@ class MainWindow(QtWidgets.QMainWindow):
         groupBoxCaptureInfo.setLayout(captureInfoLayout)
         self.updateCaptureInfo()
 
+        # Settings Column 5: Analysis Settings
+        # setting column for setting parameters used for the analysis like fft area
+        settingsLayout.addWidget(QLabel("Analysis Settings"),0,5)
+        settingsLayout.addWidget(groupBoxFftTime,1,5,2,1)
+        
+        fftTimeLayout.addWidget(spinFftStartTime)
+        fftTimeLayout.addWidget(spinFftEndTime)
+        fftTimeLayout.addStretch()
+        groupBoxFftTime.setLayout(fftTimeLayout)
 
-        # Settings Column 5: Saving Data
-        settingsLayout.addWidget(QLabel("Data Saving"),0,5)
-        settingsLayout.addWidget(buttonExportPng,4,5)
-        settingsLayout.addWidget(buttonExportCsv,5,5)
+        spinFftStartTime.setValue(0)
+        spinFftStartTime.setMinimum(0)
+        spinFftStartTime.setMaximum(self.N/self.F)
+        spinFftStartTime.setSingleStep(1.0)
+        spinFftStartTime.setStepType(QDoubleSpinBox.StepType.AdaptiveDecimalStepType)
+        spinFftStartTime.setSuffix(" s")
+        spinFftStartTime.setToolTip("Starting time for fft calculation")
+        spinFftStartTime.setCorrectionMode(QDoubleSpinBox.CorrectionMode.CorrectToNearestValue)
+        spinFftStartTime.setAccelerated(True)
+        spinFftStartTime.setKeyboardTracking(False)
+#        spinFftStartTime.valueChanged.connect(self.setSamplerate)
+
+
+
+        # Settings Column 7: Saving Data
+        # settings column for exporting data 
+        settingsLayout.addWidget(QLabel("Data Saving"),0,7)
+        settingsLayout.addWidget(buttonExportPng,4,7)
+        settingsLayout.addWidget(buttonExportCsv,5,7)
         buttonExportPng.clicked.connect(lambda :self.exportData(png=True))
         buttonExportCsv.clicked.connect(lambda :self.exportData(csv=True))
         
@@ -361,3 +397,29 @@ class MainWindow(QtWidgets.QMainWindow):
         msg = WindowMessage(MsgType.STOPWINDOW)
         self.displayPipe.send(msg)
         super().closeEvent(event)
+    
+    
+    class CustomDoubleSpinBox(QDoubleSpinBox):
+        def textFromValue(self, v: float) -> str:
+            if v == self.minimum():
+                return "min"
+            elif v == self.maximum():
+                return "max"
+            else:
+                return super().textFromValue(v)
+        
+        def valueFromText(self, text: str | None) -> float:
+            if text.lower() == "min":
+                return self.minimum()
+            elif text.lower() == "max":
+                return self.maximum()
+            else:
+                return super().valueFromText(text)
+            
+        def validate(self, input: str | None, pos: int) -> Tuple[QValidator.State, str, int]:
+            validator = QRegularExpressionValidator(QRegularExpression("min|max"))
+            result = validator.validate(input.removeprefix(self.prefix()).removesuffix(self.suffix()), pos)
+            if result[0] != QValidator.State.Invalid: # could be in the regular expression (Acceptable or Intermediate)
+                return result 
+            else: # check if it is not Acceptable by default as well
+                return super().validate(input, pos)
