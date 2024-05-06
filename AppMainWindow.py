@@ -316,6 +316,7 @@ class MainWindow(QtWidgets.QMainWindow):
         for p in self.serialPorts:
             self.comboSelectSerial.addItem(p.device)
         # select previously selected port. If none was selected, select first. 
+        self.comboSelectSerial.addItem("virtual")
         if currentIndex == -1 and currentText == "":
             self.comboSelectSerial.setCurrentIndex(0)
         else:

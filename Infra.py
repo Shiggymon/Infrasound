@@ -8,6 +8,7 @@ import pyqtgraph as pg
 from PyQt6 import QtCore,QtWidgets
 from AppMainWindow import MainWindow, MsgType, WindowMessage
 from typing import NamedTuple
+from random import normalvariate
 
 class SerialPortSettings(NamedTuple):
     port: str
@@ -53,7 +54,17 @@ def getInData(events,q:Queue,portSettings:SerialPortSettings):
         events["failure"].set()
     if ser.is_open:
          ser.close()
-
+         
+def getVirtualData(events,q:Queue):
+    while not events["terminate"].is_set():
+        # create data for serial input
+        recvData = normalvariate(mu=0, sigma=3)
+        scaledData = [round(recvData, 4)]
+        q.put(scaledData)
+        time.sleep(0.02)
+        
+        
+        
 def outData(p:connection,q:Queue):
     app = QtWidgets.QApplication([])
     main = MainWindow(p,q)
@@ -101,7 +112,10 @@ def main():
             # start serial
                 if not inProcess.is_alive():
                     portSettings = msg.payload
-                    inProcess = Process(None, target=getInData, args=(serialEvents, dataQ, portSettings))
+                    if portSettings.port == "virtual":
+                        inProcess = Process(None, target=getVirtualData, args=(serialEvents, dataQ))
+                    else:
+                        inProcess = Process(None, target=getInData, args=(serialEvents, dataQ, portSettings))
                     inProcess.start()
                     displayPipeP.send(WindowMessage(MsgType.SERIALSTARTED))
             elif msg.type == MsgType.STOPSERIAL:
