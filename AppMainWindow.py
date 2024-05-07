@@ -44,8 +44,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.useSPL = self.settings.value("Display/Unit", "dbSPL") == "dbSPL" # Output fft data in dBSPL instead of Pa
         self.fftRange = ["min", "max"]
         self.volumeRange = [round(max(0, self.N-0.3*self.F)), "max"]
-        self.captureActive = False
-        self.capturePaused = False
+        self.captureActive = False # Is the input port active
+        self.capturePaused = False # Is the receiving of data paused
         self.serialPorts = list()
         self.setWindowTitle("Infrasound Analysis")
         mainWidget = QWidget()
@@ -63,8 +63,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.buttonStartCapture = QPushButton("Start")
         self.buttonStopCapture = QPushButton("Stop")
         self.buttonPauseCapture = QPushButton("Pause")
-        spinSamplerate = QDoubleSpinBox()
-        spinCaptureTime = QDoubleSpinBox()
+        self.buttonLoadData = QPushButton("Open File...")
+        self.spinSamplerate = QDoubleSpinBox()
+        self.spinCaptureTime = QDoubleSpinBox()
         self.capSampleLabel = QLabel()
         self.capResolutionLabel = QLabel()
         groupBoxCaptureInfo = QGroupBox("Capture Info")
@@ -121,7 +122,7 @@ class MainWindow(QtWidgets.QMainWindow):
         settingsLayout.addWidget(QLabel("Data Capturing"),0,1)
         settingsLayout.addWidget(self.comboSelectSerial,1,1)
         settingsLayout.addWidget(buttonReloadSerial,2,1)
-        settingsLayout.addWidget(QLabel(""),3,1)
+        settingsLayout.addWidget(self.buttonLoadData,3,1)
         settingsLayout.addWidget(self.buttonStartCapture,4,1)
         settingsLayout.addWidget(self.buttonPauseCapture,5,1)
         settingsLayout.addWidget(self.buttonStopCapture,6,1)
@@ -134,36 +135,37 @@ class MainWindow(QtWidgets.QMainWindow):
         self.buttonPauseCapture.clicked.connect(self.pauseCapture)
         self.buttonPauseCapture.setCheckable(True)
         self.buttonPauseCapture.setEnabled(False)
-        
+        self.buttonLoadData.clicked.connect(self.loadData)
+
         # Settings Column 3: Data Settings
         # Settings column for setting input parameters like capture time and samplerate
         settingsLayout.addWidget(QLabel("Data Settings"),0,3)
-        settingsLayout.addWidget(spinSamplerate,1,3)
-        settingsLayout.addWidget(spinCaptureTime,2,3)
+        settingsLayout.addWidget(self.spinSamplerate,1,3)
+        settingsLayout.addWidget(self.spinCaptureTime,2,3)
         settingsLayout.addWidget(groupBoxCaptureInfo,4,3,3,1)
         
-        spinSamplerate.setValue(self.F)
-        spinSamplerate.setMinimum(0.01)
-        spinSamplerate.setMaximum(100000)
-        spinSamplerate.setSingleStep(1.0)
-        spinSamplerate.setStepType(QDoubleSpinBox.StepType.AdaptiveDecimalStepType)
-        spinSamplerate.setSuffix(" S/s")
-        spinSamplerate.setToolTip("Samplerate in Samples per Second")
-        spinSamplerate.setCorrectionMode(QDoubleSpinBox.CorrectionMode.CorrectToNearestValue)
-        spinSamplerate.setAccelerated(True)
-        spinSamplerate.setKeyboardTracking(False)
-        spinSamplerate.valueChanged.connect(self.setSamplerate)
-        spinCaptureTime.setValue(self.N/self.F)
-        spinCaptureTime.setMinimum(1)
-        spinCaptureTime.setMaximum(86400)
-        spinCaptureTime.setSingleStep(10.0)
-        spinCaptureTime.setStepType(QDoubleSpinBox.StepType.AdaptiveDecimalStepType)
-        spinCaptureTime.setSuffix(" s")
-        spinCaptureTime.setToolTip("Capturetime in Seconds")
-        spinCaptureTime.setCorrectionMode(QDoubleSpinBox.CorrectionMode.CorrectToNearestValue)
-        spinCaptureTime.setAccelerated(True)
-        spinCaptureTime.setKeyboardTracking(False)
-        spinCaptureTime.valueChanged.connect(self.setCaptureTime)
+        self.spinSamplerate.setValue(self.F)
+        self.spinSamplerate.setMinimum(0.01)
+        self.spinSamplerate.setMaximum(100000)
+        self.spinSamplerate.setSingleStep(1.0)
+        self.spinSamplerate.setStepType(QDoubleSpinBox.StepType.AdaptiveDecimalStepType)
+        self.spinSamplerate.setSuffix(" S/s")
+        self.spinSamplerate.setToolTip("Samplerate in Samples per Second")
+        self.spinSamplerate.setCorrectionMode(QDoubleSpinBox.CorrectionMode.CorrectToNearestValue)
+        self.spinSamplerate.setAccelerated(True)
+        self.spinSamplerate.setKeyboardTracking(False)
+        self.spinSamplerate.valueChanged.connect(self.setSamplerate)
+        self.spinCaptureTime.setValue(self.N/self.F)
+        self.spinCaptureTime.setMinimum(1)
+        self.spinCaptureTime.setMaximum(86400)
+        self.spinCaptureTime.setSingleStep(10.0)
+        self.spinCaptureTime.setStepType(QDoubleSpinBox.StepType.AdaptiveDecimalStepType)
+        self.spinCaptureTime.setSuffix(" s")
+        self.spinCaptureTime.setToolTip("Capturetime in Seconds")
+        self.spinCaptureTime.setCorrectionMode(QDoubleSpinBox.CorrectionMode.CorrectToNearestValue)
+        self.spinCaptureTime.setAccelerated(True)
+        self.spinCaptureTime.setKeyboardTracking(False)
+        self.spinCaptureTime.valueChanged.connect(self.setCaptureTime)
         captureInfoLayout.addWidget(self.capSampleLabel)
         captureInfoLayout.addWidget(self.capResolutionLabel)
         captureInfoLayout.addStretch()
@@ -219,7 +221,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self.spinVolumeStartTime.setKeyboardTracking(False)
         self.spinVolumeStartTime.valueChanged.connect(lambda t: self.setVolumeRange(start=t))
 
-
         # Settings Column 7: Saving Data
         # settings column for exporting data 
         settingsLayout.addWidget(QLabel("Data Saving"),0,7)
@@ -229,7 +230,6 @@ class MainWindow(QtWidgets.QMainWindow):
         buttonExportPng.clicked.connect(lambda :self.exportData(png=True))
         buttonExportCsv.clicked.connect(lambda :self.exportData(csv=True))
         buttonExportWav.clicked.connect(lambda :self.exportData(wav=True))
-        
 
         # Add Layout to Main Window
         mainWidget.setLayout(vLayout)
@@ -316,8 +316,6 @@ class MainWindow(QtWidgets.QMainWindow):
             self.plotGraph.addLegend().getLabel(self.lineTVolumeStart).setText("volume: {volume:.2f} dbₛₚₗ".format(volume=volumeSpl))
         else:
             self.plotGraph.addLegend().getLabel(self.lineTVolumeStart).setText("no Data!")
-            
-
         self.plotGraph.setXRange(min=xs[0], max=xs[-1], padding=0)
         self.plotGraph.setYRange(min=np.min(ys), max=np.max(ys), padding=0.1)
         self.updateCaptureInfo()
@@ -356,7 +354,6 @@ class MainWindow(QtWidgets.QMainWindow):
             self.lineF.setData([], [])
             self.lineFMax.setData([], [])
             self.fftGraph.addLegend().getLabel(self.lineFMax).setText("no Data!")
-
     
     def updateComms(self):
         while self.displayPipe.poll():
@@ -366,11 +363,13 @@ class MainWindow(QtWidgets.QMainWindow):
                     self.captureActive = True
                     self.buttonStopCapture.setEnabled(True)
                     self.pauseCapture(pause=False)
+                    self.buttonLoadData.setEnabled(False)
                 elif msg.type == MsgType.SERIALSTOPPED:
                     self.captureActive = False
                     self.buttonStartCapture.setEnabled(True)
                     self.buttonStopCapture.setEnabled(False)
                     self.buttonPauseCapture.setEnabled(False)
+                    self.buttonLoadData.setEnabled(True)
             except:
                 raise
 
@@ -408,7 +407,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self.buttonStartCapture.setEnabled(False)
         self.settings.setValue("Serial/Port", port)
         QTimer.singleShot(1000, lambda : self.buttonStartCapture.setEnabled(not self.captureActive))
-        
 
     def stopCapture(self):
         msg = WindowMessage(MsgType.STOPSERIAL)
@@ -480,7 +478,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self.spinFftStartTime.setValue(newFftStartValue)
         self.spinFftEndTime.setValue(newFftEndValue)
         self.spinVolumeStartTime.setValue(newVolumeStartValue)
-
     
     def exportData(self, png=False, csv=False, wav=False):
         defaultName = datetime.now().strftime("%Y-%m-%d-%H%M%S")
@@ -505,8 +502,6 @@ class MainWindow(QtWidgets.QMainWindow):
                 scalingFactor = np.iinfo(np.int16).max/np.max(ys)
                 data = ys*scalingFactor
                 wavfile.write(targetPath, round(self.F*128), data.astype(np.int16))
-                
-            
 
     def updateCaptureInfo(self):
         N = len(self.ys)
@@ -550,8 +545,24 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.volumeRange[1] = "max"
             else:
                 self.volumeRange[1] = round(end*self.F)
-    
-    
+
+    # load Data from an external file
+    # the function assumes that the data has been created by this software and expects a compatible format
+    def loadData(self):
+        if not self.captureActive:
+            targetPath, _ = QFileDialog.getOpenFileName(caption="Open Data (Text)", filter="Text (*.csv *.txt)")
+            if targetPath:
+                data = np.loadtxt(fname=targetPath,delimiter=";")
+                xs = np.transpose(data[:,0])
+                ys = np.transpose(data[:,1])
+                Fs = np.mean(1/np.diff(xs))
+                self.xs = [int(x) for x in np.round(xs*Fs)]
+                self.ys = ys.tolist()
+                self.spinSamplerate.setValue(Fs)
+                self.spinCaptureTime.setValue(len(xs)/Fs)
+#                self.setSamplerate(Fs)
+#                self.setCaptureTime(len(xs)/Fs)
+
     class CustomDoubleSpinBox(QDoubleSpinBox):
         def textFromValue(self, v: float) -> str:
             if v == self.minimum():
