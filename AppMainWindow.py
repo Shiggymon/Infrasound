@@ -6,6 +6,7 @@ from multiprocessing import Queue, connection
 import pyqtgraph as pg
 import pyqtgraph.exporters
 from scipy.fft import fft,fftfreq
+from scipy.io import wavfile
 import numpy as np
 import serial.tools.list_ports
 from enum import Enum, auto
@@ -77,6 +78,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.spinVolumeStartTime = self.CustomDoubleSpinBox()
         buttonExportPng = QPushButton("Save (Image)")
         buttonExportCsv = QPushButton("Save (Text)")
+        buttonExportWav = QPushButton("Save (Audio)")
 
 
 
@@ -223,8 +225,10 @@ class MainWindow(QtWidgets.QMainWindow):
         settingsLayout.addWidget(QLabel("Data Saving"),0,7)
         settingsLayout.addWidget(buttonExportPng,4,7)
         settingsLayout.addWidget(buttonExportCsv,5,7)
+        settingsLayout.addWidget(buttonExportWav,6,7)
         buttonExportPng.clicked.connect(lambda :self.exportData(png=True))
         buttonExportCsv.clicked.connect(lambda :self.exportData(csv=True))
+        buttonExportWav.clicked.connect(lambda :self.exportData(wav=True))
         
 
         # Add Layout to Main Window
@@ -478,7 +482,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.spinVolumeStartTime.setValue(newVolumeStartValue)
 
     
-    def exportData(self, png=False, csv=False):
+    def exportData(self, png=False, csv=False, wav=False):
         defaultName = datetime.now().strftime("%Y-%m-%d-%H%M%S")
         if png:
             pngExporter = pyqtgraph.exporters.ImageExporter(self.plotArea.scene())
@@ -487,13 +491,22 @@ class MainWindow(QtWidgets.QMainWindow):
                 img =  QImage(pngExporter.export(toBytes=True))
                 img.save(targetPath)
         if csv:
-            targetPath, _ = QFileDialog.getSaveFileName(caption="Save Text", directory=defaultName+".csv", filter="Text (*.csv '.txt)")
+            targetPath, _ = QFileDialog.getSaveFileName(caption="Save Text", directory=defaultName+".csv", filter="Text (*.csv *.txt)")
             if targetPath:
                 xs = np.array(self.xs)/self.F
                 ys = np.array(self.ys)
                 data = np.transpose((xs, ys))
                 hdrString = "Data Recorded and exported with Shiggytech's Infrasound. For More information visit ..."
                 np.savetxt(fname=targetPath, X=data, fmt="%.5g", delimiter=";", header=hdrString)
+        if wav:
+            targetPath, _ = QFileDialog.getSaveFileName(caption="Save Audio", directory=defaultName+".wav", filter="Audio (*.wav)")
+            if targetPath:
+                ys = np.array(self.ys)
+                scalingFactor = np.iinfo(np.int16).max/np.max(ys)
+                data = ys*scalingFactor
+                wavfile.write(targetPath, round(self.F*128), data.astype(np.int16))
+                
+            
 
     def updateCaptureInfo(self):
         N = len(self.ys)

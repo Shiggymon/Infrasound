@@ -61,7 +61,7 @@ def getVirtualData(events,q:Queue):
         recvData = normalvariate(mu=0, sigma=3)
         scaledData = [round(recvData, 4)]
         q.put(scaledData)
-        time.sleep(0.02)
+        time.sleep(0.002)
         
         
         
