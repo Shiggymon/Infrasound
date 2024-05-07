@@ -42,6 +42,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.N = int(self.settings.value("Data/SamplesBuffered", 500)) # number of samples retained in buffer
         self.useSPL = self.settings.value("Display/Unit", "dbSPL") == "dbSPL" # Output fft data in dBSPL instead of Pa
         self.fftRange = ["min", "max"]
+        self.volumeRange = [round(max(0, self.N-0.3*self.F)), "max"]
         self.captureActive = False
         self.capturePaused = False
         self.serialPorts = list()
@@ -71,6 +72,9 @@ class MainWindow(QtWidgets.QMainWindow):
         fftTimeLayout = QHBoxLayout()
         self.spinFftStartTime = self.CustomDoubleSpinBox()
         self.spinFftEndTime = self.CustomDoubleSpinBox()
+        groupBoxVolumeTime = QGroupBox("Volume Range")
+        volumeTimeLayout = QHBoxLayout()
+        self.spinVolumeStartTime = self.CustomDoubleSpinBox()
         buttonExportPng = QPushButton("Save (Image)")
         buttonExportCsv = QPushButton("Save (Text)")
 
@@ -168,6 +172,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # setting column for setting parameters used for the analysis like fft area
         settingsLayout.addWidget(QLabel("Analysis Settings"),0,5)
         settingsLayout.addWidget(groupBoxFftTime,1,5,2,1)
+        settingsLayout.addWidget(groupBoxVolumeTime,3,5,2,1)
         
         fftTimeLayout.addWidget(self.spinFftStartTime)
         fftTimeLayout.addWidget(self.spinFftEndTime)
@@ -197,6 +202,20 @@ class MainWindow(QtWidgets.QMainWindow):
         self.spinFftEndTime.setKeyboardTracking(False)
         self.spinFftEndTime.valueChanged.connect(lambda t: self.setFftRange(end=t))
 
+        volumeTimeLayout.addWidget(self.spinVolumeStartTime)
+        groupBoxVolumeTime.setLayout(volumeTimeLayout)
+
+        self.spinVolumeStartTime.setMinimum(0)
+        self.spinVolumeStartTime.setMaximum(self.N/self.F)
+        self.spinVolumeStartTime.setValue(self.volumeRange[0]/self.F)
+        self.spinVolumeStartTime.setSingleStep(1/self.F)
+        self.spinVolumeStartTime.setStepType(QDoubleSpinBox.StepType.DefaultStepType)
+        self.spinVolumeStartTime.setSuffix(" s")
+        self.spinVolumeStartTime.setToolTip("Starting time for volume calculation")
+        self.spinVolumeStartTime.setCorrectionMode(QDoubleSpinBox.CorrectionMode.CorrectToNearestValue)
+        self.spinVolumeStartTime.setAccelerated(True)
+        self.spinVolumeStartTime.setKeyboardTracking(False)
+        self.spinVolumeStartTime.valueChanged.connect(lambda t: self.setVolumeRange(start=t))
 
 
         # Settings Column 7: Saving Data
@@ -215,11 +234,15 @@ class MainWindow(QtWidgets.QMainWindow):
         # draw the initial plots
         plotPen = pg.mkPen(color=(10, 10, 10), width=2)
         fftBorderPen = pg.mkPen(color=(240, 10, 10), width = 3, style=QtCore.Qt.PenStyle.DashLine)
+        volumeBorderPen = pg.mkPen(color=(10, 10, 240), width = 3, style=QtCore.Qt.PenStyle.DashLine)
+        
         evPen = pg.mkPen(color=(240, 10, 10), width=2) # marker Pen for extreme values
         evBrush = pg.mkBrush(None) # transparent Brush for extreme values
+        self.plotGraph.addLegend(offset=(-2, 2), pen=plotPen, brush=pg.mkBrush(color=(255, 255, 255, 210)), labelTextColor=plotPen.color())
         self.lineT = self.plotGraph.plot(self.xs,self.ys, pen=plotPen)
         self.lineTFftStart = self.plotGraph.plot([0], [0], pen=fftBorderPen)
         self.lineTFftEnd = self.plotGraph.plot([0], [0], pen=fftBorderPen)
+        self.lineTVolumeStart = self.plotGraph.plot([0], [0], pen=volumeBorderPen, name="volume")
         self.plotGraph.getAxis("bottom").setLabel("time ", units="s")
         self.plotGraph.getAxis("left").setLabel("Pressure ", units="Pa")
         self.fftGraph.addLegend(offset=(-2, 2), pen=plotPen, brush=pg.mkBrush(color=(255, 255, 255, 210)), labelTextColor=plotPen.color())
@@ -276,6 +299,21 @@ class MainWindow(QtWidgets.QMainWindow):
         fftEnd = 0 if self.fftRange[1] == "min" else np.min([self.N,len(xs)])-1 if self.fftRange[1] == "max" else np.min([self.fftRange[1], len(xs)])-1
         self.lineTFftStart.setData([xs[fftStart], xs[fftStart]],[-100, 100])
         self.lineTFftEnd.setData([xs[fftEnd], xs[fftEnd]],[-100, 100])
+
+        volumeStart = 0 if self.volumeRange[0] == "min" else np.min([self.N,len(xs)])-1 if self.volumeRange[0] == "max" else np.min([self.volumeRange[0], len(xs)])-1
+        volumeEnd = 0 if self.volumeRange[1] == "min" else np.min([self.N,len(xs)])-1 if self.volumeRange[1] == "max" else np.min([self.volumeRange[1], len(xs)])-1
+        self.lineTVolumeStart.setData([xs[volumeStart], xs[volumeStart]],[-100, 100])
+        ysV = ys[volumeStart:volumeEnd+1]
+        if len(ysV) >= 1:
+            volumeRms = math.dist(ysV,[0]*len(ysV))/math.sqrt(len(ysV))
+            volumeSpl = -math.inf
+            if volumeRms != 0:
+                volumeSpl = self.lin2dbSPL(volumeRms)
+            self.plotGraph.addLegend().getLabel(self.lineTVolumeStart).setText("volume: {volume:.2f} dbₛₚₗ".format(volume=volumeSpl))
+        else:
+            self.plotGraph.addLegend().getLabel(self.lineTVolumeStart).setText("no Data!")
+            
+
         self.plotGraph.setXRange(min=xs[0], max=xs[-1], padding=0)
         self.plotGraph.setYRange(min=np.min(ys), max=np.max(ys), padding=0.1)
         self.updateCaptureInfo()
@@ -397,6 +435,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.settings.setValue("Data/Samplerate", self.F)
         self.spinFftStartTime.setSingleStep(1/self.F)
         self.spinFftEndTime.setSingleStep(1/self.F)
+        self.spinVolumeStartTime.setSingleStep(1/self.F)
 
     def setCaptureTime(self, captureTime):
         if captureTime > 0:
@@ -422,10 +461,21 @@ class MainWindow(QtWidgets.QMainWindow):
             newFftEndValue = (self.N-1)/self.F
         else:
             newFftEndValue = self.fftRange[1]/self.F
+        newVolumeStartValue = 0
+        if self.volumeRange[0] == "min":
+            pass
+        elif self.volumeRange[0] == "max":
+            newVolumeStartValue = self.N/self.F
+        elif self.volumeRange[0] >= self.N:
+            newVolumeStartValue = (self.N-1)/self.F
+        else:
+            newVolumeStartValue = self.volumeRange[0]/self.F
         self.spinFftStartTime.setMaximum(self.N/self.F)
         self.spinFftEndTime.setMaximum(self.N/self.F)
+        self.spinVolumeStartTime.setMaximum(self.N/self.F)
         self.spinFftStartTime.setValue(newFftStartValue)
         self.spinFftEndTime.setValue(newFftEndValue)
+        self.spinVolumeStartTime.setValue(newVolumeStartValue)
 
     
     def exportData(self, png=False, csv=False):
@@ -471,6 +521,22 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.fftRange[1] = "max"
             else:
                 self.fftRange[1] = round(end*self.F)
+
+    def setVolumeRange(self, start=None, end=None):
+        if start != None:
+            if start == 0:
+                self.volumeRange[0] = "min"
+            elif start == self.N/self.F:
+                self.volumeRange[0] = "max"
+            else:
+                self.volumeRange[0] = round(start*self.F)
+        if end != None:
+            if end == 0:
+                self.volumeRange[1] = "min"
+            elif end == self.N/self.F:
+                self.volumeRange[1] = "max"
+            else:
+                self.volumeRange[1] = round(end*self.F)
     
     
     class CustomDoubleSpinBox(QDoubleSpinBox):
