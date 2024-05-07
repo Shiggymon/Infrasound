@@ -1,5 +1,5 @@
 from PyQt6 import QtCore, QtWidgets
-from PyQt6.QtWidgets import QApplication, QPushButton, QVBoxLayout, QWidget, QHBoxLayout, QGridLayout, QLabel, QComboBox, QDoubleSpinBox, QFrame, QGroupBox, QRadioButton, QFileDialog
+from PyQt6.QtWidgets import QApplication, QPushButton, QVBoxLayout, QWidget, QHBoxLayout, QGridLayout, QLabel, QComboBox, QDoubleSpinBox, QFrame, QGroupBox, QRadioButton, QFileDialog, QCheckBox
 from PyQt6.QtCore import QTimer, QSettings, QSize, QRegularExpression
 from PyQt6.QtGui import QImage, QGuiApplication, QRegularExpressionValidator, QValidator
 from multiprocessing import Queue, connection
@@ -42,6 +42,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.F = float(self.settings.value("Data/Samplerate", 50)) # Samplerate F
         self.N = int(self.settings.value("Data/SamplesBuffered", 500)) # number of samples retained in buffer
         self.useSPL = self.settings.value("Display/Unit", "dbSPL") == "dbSPL" # Output fft data in dBSPL instead of Pa
+        self.fftYLimitAuto = self.settings.value("Display/FftYLimit", "auto").lower() == "auto" # calculate upper limit from current values
+        self.fftYLimit = 90 if self.fftYLimitAuto else float(self.settings.value("Display/FftYLimit",90)) # upper limit of the fft y axis
         self.fftRange = ["min", "max"]
         self.volumeRange = [round(max(0, self.N-0.3*self.F)), "max"]
         self.captureActive = False # Is the input port active
@@ -80,6 +82,10 @@ class MainWindow(QtWidgets.QMainWindow):
         buttonExportPng = QPushButton("Save (Image)")
         buttonExportCsv = QPushButton("Save (Text)")
         buttonExportWav = QPushButton("Save (Audio)")
+        fftYLimitLayout = QHBoxLayout()
+        self.spinFftYLimit = QDoubleSpinBox()
+        cbFftYLimitAuto = QCheckBox("auto")
+        
 
 
 
@@ -223,14 +229,33 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Settings Column 7: Saving Data
         # settings column for exporting data 
-        settingsLayout.addWidget(QLabel("Data Saving"),0,7)
+        settingsLayout.addWidget(QLabel("Display and Data Saving"),0,7)
+        fftYLimitLayout.addWidget(QLabel("FFT y-limit: "))
+        fftYLimitLayout.addWidget(self.spinFftYLimit)
+        fftYLimitLayout.addWidget(cbFftYLimitAuto)
+        settingsLayout.addLayout(fftYLimitLayout,1,7)
         settingsLayout.addWidget(buttonExportPng,4,7)
         settingsLayout.addWidget(buttonExportCsv,5,7)
         settingsLayout.addWidget(buttonExportWav,6,7)
         buttonExportPng.clicked.connect(lambda :self.exportData(png=True))
         buttonExportCsv.clicked.connect(lambda :self.exportData(csv=True))
         buttonExportWav.clicked.connect(lambda :self.exportData(wav=True))
-
+        
+        self.spinFftYLimit.setMinimum(0)
+        self.spinFftYLimit.setMaximum(122)
+        self.spinFftYLimit.setValue(self.fftYLimit)
+        self.spinFftYLimit.setSingleStep(1.0)
+        self.spinFftYLimit.setStepType(QDoubleSpinBox.StepType.DefaultStepType)
+        self.spinFftYLimit.setSuffix(" dbₛₚₗ")
+        self.spinFftYLimit.setToolTip("Upper Limit for the FFT Y axis in dbₛₚₗ")
+        self.spinFftYLimit.setCorrectionMode(QDoubleSpinBox.CorrectionMode.CorrectToNearestValue)
+        self.spinFftYLimit.setAccelerated(True)
+        self.spinFftYLimit.setKeyboardTracking(False)
+        self.spinFftYLimit.setEnabled(False)
+        self.spinFftYLimit.valueChanged.connect(self.setFftYLimit)
+        cbFftYLimitAuto.setChecked(True)
+        cbFftYLimitAuto.clicked.connect(self.setFftYLimitAuto)
+        
         # Add Layout to Main Window
         mainWidget.setLayout(vLayout)
         self.setCentralWidget(mainWidget)
@@ -337,14 +362,20 @@ class MainWindow(QtWidgets.QMainWindow):
                 yfsMaxIdx = np.argmax(yfsLog)
                 self.lineF.setData(xf, yfsLog)
                 self.lineFMax.setData([xf[yfsMaxIdx]], [yfsLog[yfsMaxIdx]])
-                self.fftGraph.setYRange(min=np.min(yfsLog), max=np.max(yfsLog), padding=0.1)
+                if self.fftYLimitAuto:
+                    self.fftGraph.setYRange(min=0, max=np.max(yfsLog), padding=0.1)
+                else:
+                    self.fftGraph.setYRange(min=0, max=self.fftYLimit, padding=0.1)
                 self.fftGraph.addLegend().getLabel(self.lineFMax).setText("max: {maxval:.2f} dbₛₚₗ @ {freq:.1f} Hz".format(maxval=yfsLog[yfsMaxIdx], freq=xf[yfsMaxIdx]))
             else:
                 yfs = 2.0 * abs(yf[0:N//2])
                 yfsMaxIdx = np.argmax(yfs)
                 self.lineF.setData(xf, yfs)
                 self.lineFMax.setData([xf[yfsMaxIdx]], [yfs[yfsMaxIdx]])
-                self.fftGraph.setYRange(min=np.min(yfs), max=np.max(yfs), padding=0.1)
+                if self.fftYLimitAuto:
+                    self.fftGraph.setYRange(min=0, max=np.max(yfs), padding=0.1)
+                else:
+                    self.fftGraph.setYRange(min=0, max=self.fftYLimit, padding=0.1)
                 self.fftGraph.addLegend().getLabel(self.lineFMax).setText("max: {maxval:.2f} Pa @ {freq:.1f} Hz".format(maxval=yfs[yfsMaxIdx], freq=xf[yfsMaxIdx]))
             self.fftGraph.setXRange(min=xf[0], max=xf[-1], padding=0)
         else: 
@@ -562,6 +593,21 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.spinCaptureTime.setValue(len(xs)/Fs)
 #                self.setSamplerate(Fs)
 #                self.setCaptureTime(len(xs)/Fs)
+
+    def setFftYLimit(self, yLim):
+        if self.useSPL:
+            self.fftYLimit = yLim
+            self.settings.setValue("Display/FftYLimit", self.fftYLimit)
+    
+    def setFftYLimitAuto(self, auto):
+        if auto:
+            self.fftYLimitAuto = True
+            self.settings.setValue("Display/FftYLimit", "auto")
+            self.spinFftYLimit.setEnabled(False)
+        else:
+            self.fftYLimitAuto = False
+            self.settings.setValue("Display/FftYLimit", self.fftYLimit)
+            self.spinFftYLimit.setEnabled(True)
 
     class CustomDoubleSpinBox(QDoubleSpinBox):
         def textFromValue(self, v: float) -> str:
