@@ -11,6 +11,7 @@ import serial.tools.list_ports
 from enum import Enum, auto
 from typing import NamedTuple, Tuple
 from datetime import datetime
+import math
 
 class MsgType(Enum):
     STARTSERIAL = auto()
@@ -38,7 +39,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.xs = [0] # sample in time
         self.ys = [0] # measured value in Pa
         self.F = float(self.settings.value("Data/Samplerate", 50)) # Samplerate F
-        self.N = float(self.settings.value("Data/SamplesBuffered", 500)) # number of samples retained in buffer
+        self.N = int(self.settings.value("Data/SamplesBuffered", 500)) # number of samples retained in buffer
         self.useSPL = self.settings.value("Display/Unit", "dbSPL") == "dbSPL" # Output fft data in dBSPL instead of Pa
         self.fftRange = ["min", "max"]
         self.captureActive = False
@@ -68,8 +69,8 @@ class MainWindow(QtWidgets.QMainWindow):
         captureInfoLayout = QVBoxLayout()
         groupBoxFftTime = QGroupBox("FFT Range")
         fftTimeLayout = QHBoxLayout()
-        spinFftStartTime = self.CustomDoubleSpinBox()
-        spinFftEndTime = self.CustomDoubleSpinBox()
+        self.spinFftStartTime = self.CustomDoubleSpinBox()
+        self.spinFftEndTime = self.CustomDoubleSpinBox()
         buttonExportPng = QPushButton("Save (Image)")
         buttonExportCsv = QPushButton("Save (Text)")
 
@@ -98,9 +99,9 @@ class MainWindow(QtWidgets.QMainWindow):
         vLayout.addLayout(settingsLayout)
         settingsLayout.setHorizontalSpacing(20)
 
-        settingsLayout.addWidget(settingsSeparator1,1, 2, 6, 2)
-        settingsLayout.addWidget(settingsSeparator2,1, 4, 6, 4)
-        settingsLayout.addWidget(settingsSeparator3,1, 6, 6, 6)
+        settingsLayout.addWidget(settingsSeparator1,1, 2, 6, 1)
+        settingsLayout.addWidget(settingsSeparator2,1, 4, 6, 1)
+        settingsLayout.addWidget(settingsSeparator3,1, 6, 6, 1)
         settingsSeparator1.setFrameShape(QFrame.Shape.VLine)
         settingsSeparator2.setFrameShape(QFrame.Shape.VLine)
         settingsSeparator3.setFrameShape(QFrame.Shape.VLine)
@@ -168,22 +169,33 @@ class MainWindow(QtWidgets.QMainWindow):
         settingsLayout.addWidget(QLabel("Analysis Settings"),0,5)
         settingsLayout.addWidget(groupBoxFftTime,1,5,2,1)
         
-        fftTimeLayout.addWidget(spinFftStartTime)
-        fftTimeLayout.addWidget(spinFftEndTime)
-        fftTimeLayout.addStretch()
+        fftTimeLayout.addWidget(self.spinFftStartTime)
+        fftTimeLayout.addWidget(self.spinFftEndTime)
+#        fftTimeLayout.addStretch()
         groupBoxFftTime.setLayout(fftTimeLayout)
 
-        spinFftStartTime.setValue(0)
-        spinFftStartTime.setMinimum(0)
-        spinFftStartTime.setMaximum(self.N/self.F)
-        spinFftStartTime.setSingleStep(1.0)
-        spinFftStartTime.setStepType(QDoubleSpinBox.StepType.AdaptiveDecimalStepType)
-        spinFftStartTime.setSuffix(" s")
-        spinFftStartTime.setToolTip("Starting time for fft calculation")
-        spinFftStartTime.setCorrectionMode(QDoubleSpinBox.CorrectionMode.CorrectToNearestValue)
-        spinFftStartTime.setAccelerated(True)
-        spinFftStartTime.setKeyboardTracking(False)
-#        spinFftStartTime.valueChanged.connect(self.setSamplerate)
+        self.spinFftStartTime.setMinimum(0)
+        self.spinFftStartTime.setMaximum(self.N/self.F)
+        self.spinFftStartTime.setValue(0)
+        self.spinFftStartTime.setSingleStep(1/self.F)
+        self.spinFftStartTime.setStepType(QDoubleSpinBox.StepType.DefaultStepType)
+        self.spinFftStartTime.setSuffix(" s")
+        self.spinFftStartTime.setToolTip("Starting time for fft calculation")
+        self.spinFftStartTime.setCorrectionMode(QDoubleSpinBox.CorrectionMode.CorrectToNearestValue)
+        self.spinFftStartTime.setAccelerated(True)
+        self.spinFftStartTime.setKeyboardTracking(False)
+        self.spinFftStartTime.valueChanged.connect(lambda t: self.setFftRange(start=t))
+        self.spinFftEndTime.setMinimum(0)
+        self.spinFftEndTime.setMaximum(self.N/self.F)
+        self.spinFftEndTime.setValue(self.N/self.F)
+        self.spinFftEndTime.setSingleStep(1/self.F)
+        self.spinFftEndTime.setStepType(QDoubleSpinBox.StepType.DefaultStepType)
+        self.spinFftEndTime.setSuffix(" s")
+        self.spinFftEndTime.setToolTip("Stopping time for fft calculation")
+        self.spinFftEndTime.setCorrectionMode(QDoubleSpinBox.CorrectionMode.CorrectToNearestValue)
+        self.spinFftEndTime.setAccelerated(True)
+        self.spinFftEndTime.setKeyboardTracking(False)
+        self.spinFftEndTime.valueChanged.connect(lambda t: self.setFftRange(end=t))
 
 
 
@@ -199,10 +211,15 @@ class MainWindow(QtWidgets.QMainWindow):
         # Add Layout to Main Window
         mainWidget.setLayout(vLayout)
         self.setCentralWidget(mainWidget)
+        
+        # draw the initial plots
         plotPen = pg.mkPen(color=(10, 10, 10), width=2)
+        fftBorderPen = pg.mkPen(color=(240, 10, 10), width = 3, style=QtCore.Qt.PenStyle.DashLine)
         evPen = pg.mkPen(color=(240, 10, 10), width=2) # marker Pen for extreme values
         evBrush = pg.mkBrush(None) # transparent Brush for extreme values
         self.lineT = self.plotGraph.plot(self.xs,self.ys, pen=plotPen)
+        self.lineTFftStart = self.plotGraph.plot([0], [0], pen=fftBorderPen)
+        self.lineTFftEnd = self.plotGraph.plot([0], [0], pen=fftBorderPen)
         self.plotGraph.getAxis("bottom").setLabel("time ", units="s")
         self.plotGraph.getAxis("left").setLabel("Pressure ", units="Pa")
         self.fftGraph.addLegend(offset=(-2, 2), pen=plotPen, brush=pg.mkBrush(color=(255, 255, 255, 210)), labelTextColor=plotPen.color())
@@ -255,17 +272,24 @@ class MainWindow(QtWidgets.QMainWindow):
         xs = np.array(self.xs)*1/self.F
         ys = np.array(self.ys)
         self.lineT.setData(xs, ys)
+        fftStart = 0 if self.fftRange[0] == "min" else np.min([self.N,len(xs)])-1 if self.fftRange[0] == "max" else np.min([self.fftRange[0], len(xs)])-1
+        fftEnd = 0 if self.fftRange[1] == "min" else np.min([self.N,len(xs)])-1 if self.fftRange[1] == "max" else np.min([self.fftRange[1], len(xs)])-1
+        self.lineTFftStart.setData([xs[fftStart], xs[fftStart]],[-100, 100])
+        self.lineTFftEnd.setData([xs[fftEnd], xs[fftEnd]],[-100, 100])
         self.plotGraph.setXRange(min=xs[0], max=xs[-1], padding=0)
         self.plotGraph.setYRange(min=np.min(ys), max=np.max(ys), padding=0.1)
         self.updateCaptureInfo()
 
     def updateFPlot(self):
         T = 1/self.F 
-        N = len(self.ys)
+        fftStart = 0 if self.fftRange[0] == "min" else np.min([self.N,len(self.ys)])-1 if self.fftRange[0] == "max" else np.min([self.fftRange[0], len(self.ys)])-1
+        fftEnd = 0 if self.fftRange[1] == "min" else np.min([self.N,len(self.ys)])-1 if self.fftRange[1] == "max" else np.min([self.fftRange[1], len(self.ys)])-1
+        N = len(self.ys[fftStart:(fftEnd+1)])
         if N > 1:
+            # Enough values to calculate an fft are captured and selected. 
             if N%2:
                 N += 1
-            ys = np.array(self.ys)
+            ys = np.array(self.ys[fftStart:(fftEnd+1)])
             yf = fft(ys, n=N, norm="forward")
             xf = fftfreq(N, T)[:N//2]
             if self.useSPL:
@@ -283,6 +307,14 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.fftGraph.setYRange(min=np.min(yfs), max=np.max(yfs), padding=0.1)
                 self.fftGraph.addLegend().getLabel(self.lineFMax).setText("max: {maxval:.2f} Pa @ {freq:.1f} Hz".format(maxval=yfs[yfsMaxIdx], freq=xf[yfsMaxIdx]))
             self.fftGraph.setXRange(min=xf[0], max=xf[-1], padding=0)
+        else: 
+            # Not enough data captured or selected. 
+            # Blank the fft graph and set info text in legend.
+            # This path is also taken if fftStart >= fftEnd
+            self.lineF.setData([], [])
+            self.lineFMax.setData([], [])
+            self.fftGraph.addLegend().getLabel(self.lineFMax).setText("no Data!")
+
     
     def updateComms(self):
         while self.displayPipe.poll():
@@ -363,13 +395,38 @@ class MainWindow(QtWidgets.QMainWindow):
             self.F = 0.01
         self.setCaptureTime(self.N/oldSampleRate)
         self.settings.setValue("Data/Samplerate", self.F)
+        self.spinFftStartTime.setSingleStep(1/self.F)
+        self.spinFftEndTime.setSingleStep(1/self.F)
 
     def setCaptureTime(self, captureTime):
         if captureTime > 0:
-            self.N = captureTime*self.F
+            self.N = math.ceil(captureTime*self.F)
         else:
-            self.N = self.F
+            self.N = math.ceil(self.F)
         self.settings.setValue("Data/SamplesBuffered", self.N)
+        newFftStartValue = 0
+        if self.fftRange[0] == "min":
+            pass
+        elif self.fftRange[0] == "max":
+            newFftStartValue = self.N/self.F
+        elif self.fftRange[0] >= self.N:
+            newFftStartValue = (self.N-1)/self.F
+        else:
+            newFftStartValue = self.fftRange[0]/self.F
+        newFftEndValue = 0
+        if self.fftRange[1] == "min":
+            pass
+        elif self.fftRange[1] == "max":
+            newFftEndValue = self.N/self.F
+        elif self.fftRange[1] >= self.N:
+            newFftEndValue = (self.N-1)/self.F
+        else:
+            newFftEndValue = self.fftRange[1]/self.F
+        self.spinFftStartTime.setMaximum(self.N/self.F)
+        self.spinFftEndTime.setMaximum(self.N/self.F)
+        self.spinFftStartTime.setValue(newFftStartValue)
+        self.spinFftEndTime.setValue(newFftEndValue)
+
     
     def exportData(self, png=False, csv=False):
         defaultName = datetime.now().strftime("%Y-%m-%d-%H%M%S")
@@ -391,13 +448,29 @@ class MainWindow(QtWidgets.QMainWindow):
     def updateCaptureInfo(self):
         N = len(self.ys)
         self.capSampleLabel.setText("max Samples retained: {:.0f}".format(self.N))
-        self.capResolutionLabel.setText("Resolution: {:.3f} Hz".format(self.F/N))
+        self.capResolutionLabel.setText("max Resolution: {:.3f} Hz".format(self.F/N))
         
     def closeEvent(self, event):
         self.stopCapture()
         msg = WindowMessage(MsgType.STOPWINDOW)
         self.displayPipe.send(msg)
         super().closeEvent(event)
+        
+    def setFftRange(self, start=None, end=None):
+        if start != None:
+            if start == 0:
+                self.fftRange[0] = "min"
+            elif start == self.N/self.F:
+                self.fftRange[0] = "max"
+            else:
+                self.fftRange[0] = round(start*self.F)
+        if end != None:
+            if end == 0:
+                self.fftRange[1] = "min"
+            elif end == self.N/self.F:
+                self.fftRange[1] = "max"
+            else:
+                self.fftRange[1] = round(end*self.F)
     
     
     class CustomDoubleSpinBox(QDoubleSpinBox):
