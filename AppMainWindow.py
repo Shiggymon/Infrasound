@@ -1,5 +1,5 @@
 from PyQt6 import QtCore, QtWidgets
-from PyQt6.QtWidgets import QApplication, QPushButton, QVBoxLayout, QWidget, QHBoxLayout, QGridLayout, QLabel, QComboBox, QDoubleSpinBox, QFrame, QGroupBox, QRadioButton, QFileDialog, QCheckBox
+from PyQt6.QtWidgets import QApplication, QPushButton, QVBoxLayout, QWidget, QHBoxLayout, QGridLayout, QLabel, QComboBox, QDoubleSpinBox, QFrame, QGroupBox, QRadioButton, QFileDialog, QCheckBox, QMessageBox
 from PyQt6.QtCore import QTimer, QSettings, QSize, QRegularExpression
 from PyQt6.QtGui import QImage, QGuiApplication, QRegularExpressionValidator, QValidator
 from multiprocessing import Queue, connection
@@ -357,8 +357,10 @@ class MainWindow(QtWidgets.QMainWindow):
             ys = np.array(self.ys[fftStart:(fftEnd+1)])
             yf = fft(ys, n=N, norm="forward")
             xf = fftfreq(N, T)[:N//2]
+            yfs = abs(yf[0:N//2])
+            yfs[1:-1] *= 2.0 
             if self.useSPL:
-                yfsLog = self.lin2dbSPL(2.0 * abs(yf[0:N//2]))  
+                yfsLog = self.lin2dbSPL(yfs)  
                 yfsMaxIdx = np.argmax(yfsLog)
                 self.lineF.setData(xf, yfsLog)
                 self.lineFMax.setData([xf[yfsMaxIdx]], [yfsLog[yfsMaxIdx]])
@@ -368,7 +370,6 @@ class MainWindow(QtWidgets.QMainWindow):
                     self.fftGraph.setYRange(min=0, max=self.fftYLimit, padding=0.1)
                 self.fftGraph.addLegend().getLabel(self.lineFMax).setText("max: {maxval:.2f} dbₛₚₗ @ {freq:.1f} Hz".format(maxval=yfsLog[yfsMaxIdx], freq=xf[yfsMaxIdx]))
             else:
-                yfs = 2.0 * abs(yf[0:N//2])
                 yfsMaxIdx = np.argmax(yfs)
                 self.lineF.setData(xf, yfs)
                 self.lineFMax.setData([xf[yfsMaxIdx]], [yfs[yfsMaxIdx]])
@@ -442,8 +443,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def stopCapture(self):
         msg = WindowMessage(MsgType.STOPSERIAL)
         self.displayPipe.send(msg)
-        self.updDataTimer.stop()
-        
+        self.updDataTimer.stop()        
 
     def pauseCapture(self, paused=None, pause=None):
         if pause == None:
@@ -525,7 +525,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 ys = np.array(self.ys)
                 data = np.transpose((xs, ys))
                 hdrString = "Data Recorded and exported with Shiggytech's Infrasound. For More information visit ..."
-                np.savetxt(fname=targetPath, X=data, fmt="%.5g", delimiter=";", header=hdrString)
+                np.savetxt(fname=targetPath, X=data, fmt=("%g", "%.5g"), delimiter=";", header=hdrString)
         if wav:
             targetPath, _ = QFileDialog.getSaveFileName(caption="Save Audio", directory=defaultName+".wav", filter="Audio (*.wav)")
             if targetPath:
@@ -587,6 +587,14 @@ class MainWindow(QtWidgets.QMainWindow):
                 xs = np.transpose(data[:,0])
                 ys = np.transpose(data[:,1])
                 Fs = np.mean(1/np.diff(xs))
+                if math.isinf(Fs) or Fs == 0.0:
+                    Fs = self.F
+                    msg = QMessageBox(self)
+                    msg.setWindowTitle("Invalid Samplerate")
+                    msg.setText(f"Samplerate estimated from Input data is invalid.\nUsing current value {self.F} S/s instead. ") 
+                    msg.setIcon(QMessageBox.Icon.Information) 
+                    msg.exec()
+                    xs = xs[0] + np.arange(len(xs))/Fs
                 self.xs = [int(x) for x in np.round(xs*Fs)]
                 self.ys = ys.tolist()
                 self.spinSamplerate.setValue(Fs)
