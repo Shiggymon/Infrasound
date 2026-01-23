@@ -36,7 +36,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.resize(size)
         self.settings = QSettings(QSettings.Format.IniFormat, QSettings.Scope.UserScope, "shiggytech", "infrasound")
         self.settings.setFallbacksEnabled(False)
-        self.settings.setValue("Settings/Version", "0.1")
+        if self.settings.value("Settings/Version", 0.0, float) != 0.2:
+            self.updateSettings()
         self.xs = [0] # sample in time
         self.ys = [0] # measured value in Pa
         self.F = float(self.settings.value("Data/Samplerate", 50)) # Samplerate F
@@ -45,7 +46,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.fftYLimitAuto = self.settings.value("Display/FftYLimit", "auto").lower() == "auto" # calculate upper limit from current values
         self.fftYLimit = 90 if self.fftYLimitAuto else float(self.settings.value("Display/FftYLimit",90)) # upper limit of the fft y axis
         self.fftRange = ["min", "max"]
-        self.fftMaxRange = [2.2, "max"] # range to search for fft maximum value
+        self.fftMaxRange = self.settings.value("Analysis/FftMaxRange", [0.1, 'max']) # range to search for fft maximum value
+        if len(self.fftMaxRange) < 2:
+            self.fftMaxRange = [0.1, 'max']
+            self.settings.setValue("Analysis/FftMaxRange", self.fftMaxRange)
+        else:
+            self.fftMaxRange = [x if x == "min" or x == "max" else float(x) if self._isFloat(x) else "min" if i == 0 else "max" for i, x in enumerate(self.fftMaxRange[0:2])] # limit list to the first 2 values. Use them if they are min, max or float. Otherwise set min if first value or max if second value. 
         self.volumeRange = [round(max(0, self.N-0.3*self.F)), "max"]
         self.captureActive = False # Is the input port active
         self.capturePaused = False # Is the receiving of data paused
@@ -225,7 +231,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.spinFftMaxStart.setMinimum(0)
         self.spinFftMaxStart.setMaximum(round(self.F/2, 2))
-        self.spinFftMaxStart.setValue(0)
+        self.spinFftMaxStart.setValue(self.fftMaxRange[0])
         self.spinFftMaxStart.setSingleStep(0.01)
         self.spinFftMaxStart.setStepType(QDoubleSpinBox.StepType.DefaultStepType)
         self.spinFftMaxStart.setSuffix(" Hz")
@@ -236,7 +242,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.spinFftMaxStart.valueChanged.connect(lambda f: self.setFftMaxRange(start=f))
         self.spinFftMaxEnd.setMinimum(0)
         self.spinFftMaxEnd.setMaximum(round(self.F/2, 2))
-        self.spinFftMaxEnd.setValue(round(self.F/2, 2))
+        self.spinFftMaxEnd.setValue(self.fftMaxRange[1])
         self.spinFftMaxEnd.setSingleStep(0.01)
         self.spinFftMaxEnd.setStepType(QDoubleSpinBox.StepType.DefaultStepType)
         self.spinFftMaxEnd.setSuffix(" Hz")
@@ -652,6 +658,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.fftMaxRange[1] = "max"
             else:
                 self.fftMaxRange[1] = round(end, 2)
+        self.settings.setValue("Analysis/FftMaxRange", self.fftMaxRange)
+
 
     def setVolumeRange(self, start=None, end=None):
         if start != None:
@@ -709,6 +717,20 @@ class MainWindow(QtWidgets.QMainWindow):
             self.settings.setValue("Display/FftYLimit", self.fftYLimit)
             self.spinFftYLimit.setEnabled(True)
 
+    def updateSettings(self):
+        # minor versions update in place or set compatible default values at first update
+        if self.settings.value("Settings/Version", 0.0, float) < 0.1:
+            self.settings.setValue("Settings/Version", 0.1)
+        if self.settings.value("Settings/Version", 0.0, float) < 0.2:
+            self.settings.setValue("Settings/Version", 0.2)  
+    
+    def _isFloat(self, value):
+        try:
+            float(value)
+            return True
+        except ValueError:
+            return False
+    
     class CustomDoubleSpinBox(QDoubleSpinBox):
         def textFromValue(self, v: float) -> str:
             if v == self.minimum():
@@ -733,3 +755,10 @@ class MainWindow(QtWidgets.QMainWindow):
                 return result 
             else: # check if it is not Acceptable by default as well
                 return super().validate(input, pos)
+        
+        def setValue(self, val):
+            if val == "min":
+                val = self.minimum()
+            elif val == "max":
+                val = self.maximum()
+            return super().setValue(val)
