@@ -402,25 +402,32 @@ class MainWindow(QtWidgets.QMainWindow):
             fftYRange = [0, 0]
             if self.useSPL:
                 yfsLog = self.lin2dbSPL(yfs)  
-                yfsMaxIdx = np.argmax(yfsLog[fftMaxStart:fftMaxEnd]) + fftMaxStart # search max between fftMaxStart and fftMaxEnd and fix offset to xf by adding fftMaxStart
                 self.lineF.setData(xf, yfsLog)
-                self.lineFMax.setData([xf[yfsMaxIdx]], [yfsLog[yfsMaxIdx]])
+                if fftMaxEnd > fftMaxStart:
+                    yfsMaxIdx = np.argmax(yfsLog[fftMaxStart:fftMaxEnd]) + fftMaxStart # search max between fftMaxStart and fftMaxEnd and fix offset to xf by adding fftMaxStart
+                    self.lineFMax.setData([xf[yfsMaxIdx]], [yfsLog[yfsMaxIdx]])
+                    self.fftGraph.addLegend().getLabel(self.lineFMax).setText("max: {maxval:.2f} dbₛₚₗ @ {freq:.1f} Hz".format(maxval=yfsLog[yfsMaxIdx], freq=xf[yfsMaxIdx]))
+                else:
+                    self.lineFMax.setData([], [])
+                    self.fftGraph.addLegend().getLabel(self.lineFMax).setText("invalid max. search limits")
                 if self.fftYLimitAuto:
                     fftYRange[1] = np.max(yfsLog)
                 else:
                     fftYRange[1] = self.fftYLimit
-                self.fftGraph.setYRange(min=0, max=fftYRange[1], padding=0.1)
-                self.fftGraph.addLegend().getLabel(self.lineFMax).setText("max: {maxval:.2f} dbₛₚₗ @ {freq:.1f} Hz".format(maxval=yfsLog[yfsMaxIdx], freq=xf[yfsMaxIdx]))
             else:
-                yfsMaxIdx = np.argmax(yfs[fftMaxStart:fftMaxEnd]) + fftMaxStart # search max between fftMaxStart and fftMaxEnd and fix offset to xf by adding fftMaxStart
                 self.lineF.setData(xf, yfs)
-                self.lineFMax.setData([xf[yfsMaxIdx]], [yfs[yfsMaxIdx]])
+                if fftMaxEnd > fftMaxStart:
+                    yfsMaxIdx = np.argmax(yfs[fftMaxStart:fftMaxEnd]) + fftMaxStart # search max between fftMaxStart and fftMaxEnd and fix offset to xf by adding fftMaxStart
+                    self.lineFMax.setData([xf[yfsMaxIdx]], [yfs[yfsMaxIdx]])
+                    self.fftGraph.addLegend().getLabel(self.lineFMax).setText("max: {maxval:.2f} Pa @ {freq:.1f} Hz".format(maxval=yfs[yfsMaxIdx], freq=xf[yfsMaxIdx]))
+                else:
+                    self.lineFMax.setData([], [])
+                    self.fftGraph.addLegend().getLabel(self.lineFMax).setText("invalid max. search limits")
                 if self.fftYLimitAuto:
                     fftYRange[1] = np.max(yfs)
                 else:
                     fftYRange[1] = self.fftYLimit
-                self.fftGraph.setYRange(min=0, max=fftYRange[1], padding=0.1)
-                self.fftGraph.addLegend().getLabel(self.lineFMax).setText("max: {maxval:.2f} Pa @ {freq:.1f} Hz".format(maxval=yfs[yfsMaxIdx], freq=xf[yfsMaxIdx]))
+            self.fftGraph.setYRange(min=0, max=fftYRange[1], padding=0.1)
             self.fftGraph.setXRange(min=xf[0], max=xf[-1], padding=0)
             
             self.lineFMaxStart.setData([xf[fftMaxStart], xf[fftMaxStart]],self.fftGraph.getViewBox().viewRange()[1])
@@ -521,8 +528,7 @@ class MainWindow(QtWidgets.QMainWindow):
         newFftMaxRangeStart = 0 if self.fftMaxRange[0] == "min" else self.F/2 if self.fftMaxRange[0] == "max" else self.fftMaxRange[0]
         newFftMaxRangeEnd = 0 if self.fftMaxRange[1] == "min" else self.F/2 if self.fftMaxRange[1] == "max" else self.fftMaxRange[1]
         self.spinFftMaxStart.setValue(newFftMaxRangeStart)
-        self.spinFftMaxEnd.setValue(newFftMaxRangeEnd)
-        
+        self.spinFftMaxEnd.setValue(newFftMaxRangeEnd)      
 
     def setCaptureTime(self, captureTime):
         if captureTime > 0:
