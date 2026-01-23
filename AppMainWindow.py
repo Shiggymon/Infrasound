@@ -45,6 +45,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.fftYLimitAuto = self.settings.value("Display/FftYLimit", "auto").lower() == "auto" # calculate upper limit from current values
         self.fftYLimit = 90 if self.fftYLimitAuto else float(self.settings.value("Display/FftYLimit",90)) # upper limit of the fft y axis
         self.fftRange = ["min", "max"]
+        self.fftMaxRange = [1000, "max"] # range to search for fft maximum value
         self.volumeRange = [round(max(0, self.N-0.3*self.F)), "max"]
         self.captureActive = False # Is the input port active
         self.capturePaused = False # Is the receiving of data paused
@@ -263,6 +264,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # draw the initial plots
         plotPen = pg.mkPen(color=(10, 10, 10), width=2)
         fftBorderPen = pg.mkPen(color=(240, 10, 10), width = 3, style=QtCore.Qt.PenStyle.DashLine)
+        fftMaxBorderPen = pg.mkPen(color=(240, 10, 10, 128), width = 3, style=QtCore.Qt.PenStyle.DashLine) # Pen to style the lines showing the fft maximum search range
         volumeBorderPen = pg.mkPen(color=(10, 10, 240), width = 3, style=QtCore.Qt.PenStyle.DashLine)
         
         evPen = pg.mkPen(color=(240, 10, 10), width=2) # marker Pen for extreme values
@@ -276,6 +278,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.plotGraph.getAxis("left").setLabel("Pressure ", units="Pa")
         self.fftGraph.addLegend(offset=(-2, 2), pen=plotPen, brush=pg.mkBrush(color=(255, 255, 255, 210)), labelTextColor=plotPen.color())
         self.lineF = self.fftGraph.plot(self.xs,self.ys, pen=plotPen)
+        self.lineFMaxStart = self.fftGraph.plot([0], [0], pen=fftMaxBorderPen) # draw default lower fft maximum search limit
+        self.lineFMaxEnd = self.fftGraph.plot([0], [0], pen=fftMaxBorderPen) # draw default upper fft maximum search limit
         self.lineFMax = self.fftGraph.plot(x=[12], y=[10], symbol="t1", pen=pg.mkPen(None), symbolPen=evPen, symbolBrush=evBrush, name="maximum") # use initial values that are visible
         self.fftGraph.getAxis("bottom").setLabel("Frequency ", units="Hz")
         if self.useSPL:
@@ -359,26 +363,35 @@ class MainWindow(QtWidgets.QMainWindow):
             xf = fftfreq(N, T)[:N//2]
             yfs = abs(yf[0:N//2])
             yfs[1:-1] *= 2.0 
+
+            fftMaxStart = 0 if self.fftMaxRange[0] == "min" else len(xf)-1 if self.fftMaxRange[0] == "max" else np.min([self.fftMaxRange[0], len(xf)])-1 # index to start searching for maximum fft value
+            fftMaxEnd = 0 if self.fftMaxRange[1] == "min" else len(xf)-1 if self.fftMaxRange[1] == "max" else np.min([self.fftMaxRange[1], len(xf)])-1 # index to stop searching for maximum fft value
+            fftYRange = [0, 0]
             if self.useSPL:
                 yfsLog = self.lin2dbSPL(yfs)  
-                yfsMaxIdx = np.argmax(yfsLog)
+                yfsMaxIdx = np.argmax(yfsLog[fftMaxStart:fftMaxEnd]) + fftMaxStart # search max between fftMaxStart and fftMaxEnd and fix offset to xf by adding fftMaxStart
                 self.lineF.setData(xf, yfsLog)
                 self.lineFMax.setData([xf[yfsMaxIdx]], [yfsLog[yfsMaxIdx]])
                 if self.fftYLimitAuto:
-                    self.fftGraph.setYRange(min=0, max=np.max(yfsLog), padding=0.1)
+                    fftYRange[1] = np.max(yfsLog)
                 else:
-                    self.fftGraph.setYRange(min=0, max=self.fftYLimit, padding=0.1)
+                    fftYRange[1] = self.fftYLimit
+                self.fftGraph.setYRange(min=0, max=fftYRange[1], padding=0.1)
                 self.fftGraph.addLegend().getLabel(self.lineFMax).setText("max: {maxval:.2f} dbₛₚₗ @ {freq:.1f} Hz".format(maxval=yfsLog[yfsMaxIdx], freq=xf[yfsMaxIdx]))
             else:
-                yfsMaxIdx = np.argmax(yfs)
+                yfsMaxIdx = np.argmax(yfs[fftMaxStart:fftMaxEnd]) + fftMaxStart # search max between fftMaxStart and fftMaxEnd and fix offset to xf by adding fftMaxStart
                 self.lineF.setData(xf, yfs)
                 self.lineFMax.setData([xf[yfsMaxIdx]], [yfs[yfsMaxIdx]])
                 if self.fftYLimitAuto:
-                    self.fftGraph.setYRange(min=0, max=np.max(yfs), padding=0.1)
+                    fftYRange[1] = np.max(yfs)
                 else:
-                    self.fftGraph.setYRange(min=0, max=self.fftYLimit, padding=0.1)
+                    fftYRange[1] = self.fftYLimit
+                self.fftGraph.setYRange(min=0, max=fftYRange[1], padding=0.1)
                 self.fftGraph.addLegend().getLabel(self.lineFMax).setText("max: {maxval:.2f} Pa @ {freq:.1f} Hz".format(maxval=yfs[yfsMaxIdx], freq=xf[yfsMaxIdx]))
             self.fftGraph.setXRange(min=xf[0], max=xf[-1], padding=0)
+            
+            self.lineFMaxStart.setData([xf[fftMaxStart], xf[fftMaxStart]],self.fftGraph.getViewBox().viewRange()[1])
+            self.lineFMaxEnd.setData([xf[fftMaxEnd], xf[fftMaxEnd]],self.fftGraph.getViewBox().viewRange()[1])
         else: 
             # Not enough data captured or selected. 
             # Blank the fft graph and set info text in legend.
