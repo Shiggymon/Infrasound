@@ -45,7 +45,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.fftYLimitAuto = self.settings.value("Display/FftYLimit", "auto").lower() == "auto" # calculate upper limit from current values
         self.fftYLimit = 90 if self.fftYLimitAuto else float(self.settings.value("Display/FftYLimit",90)) # upper limit of the fft y axis
         self.fftRange = ["min", "max"]
-        self.fftMaxRange = [1000, "max"] # range to search for fft maximum value
+        self.fftMaxRange = [2.2, "max"] # range to search for fft maximum value
         self.volumeRange = [round(max(0, self.N-0.3*self.F)), "max"]
         self.captureActive = False # Is the input port active
         self.capturePaused = False # Is the receiving of data paused
@@ -77,6 +77,10 @@ class MainWindow(QtWidgets.QMainWindow):
         fftTimeLayout = QHBoxLayout()
         self.spinFftStartTime = self.CustomDoubleSpinBox()
         self.spinFftEndTime = self.CustomDoubleSpinBox()
+        groupBoxFftMaxRange = QGroupBox("FFT Analysis Search Range")
+        fftMaxRangeLayout = QHBoxLayout()
+        self.spinFftMaxStart = self.CustomDoubleSpinBox()
+        self.spinFftMaxEnd = self.CustomDoubleSpinBox()
         groupBoxVolumeTime = QGroupBox("Volume Range")
         volumeTimeLayout = QHBoxLayout()
         self.spinVolumeStartTime = self.CustomDoubleSpinBox()
@@ -183,7 +187,8 @@ class MainWindow(QtWidgets.QMainWindow):
         # setting column for setting parameters used for the analysis like fft area
         settingsLayout.addWidget(QLabel("Analysis Settings"),0,5)
         settingsLayout.addWidget(groupBoxFftTime,1,5,2,1)
-        settingsLayout.addWidget(groupBoxVolumeTime,3,5,2,1)
+        settingsLayout.addWidget(groupBoxFftMaxRange,3,5,2,1)
+        settingsLayout.addWidget(groupBoxVolumeTime,5,5,2,1)
         
         fftTimeLayout.addWidget(self.spinFftStartTime)
         fftTimeLayout.addWidget(self.spinFftEndTime)
@@ -212,6 +217,34 @@ class MainWindow(QtWidgets.QMainWindow):
         self.spinFftEndTime.setAccelerated(True)
         self.spinFftEndTime.setKeyboardTracking(False)
         self.spinFftEndTime.valueChanged.connect(lambda t: self.setFftRange(end=t))
+        
+        fftMaxRangeLayout.addWidget(self.spinFftMaxStart)
+        fftMaxRangeLayout.addWidget(self.spinFftMaxEnd)
+
+        groupBoxFftMaxRange.setLayout(fftMaxRangeLayout)
+
+        self.spinFftMaxStart.setMinimum(0)
+        self.spinFftMaxStart.setMaximum(round(self.F/2, 2))
+        self.spinFftMaxStart.setValue(0)
+        self.spinFftMaxStart.setSingleStep(0.01)
+        self.spinFftMaxStart.setStepType(QDoubleSpinBox.StepType.DefaultStepType)
+        self.spinFftMaxStart.setSuffix(" Hz")
+        self.spinFftMaxStart.setToolTip("Starting frequency for fft maximum search")
+        self.spinFftMaxStart.setCorrectionMode(QDoubleSpinBox.CorrectionMode.CorrectToNearestValue)
+        self.spinFftMaxStart.setAccelerated(True)
+        self.spinFftMaxStart.setKeyboardTracking(False)
+        self.spinFftMaxStart.valueChanged.connect(lambda f: self.setFftMaxRange(start=f))
+        self.spinFftMaxEnd.setMinimum(0)
+        self.spinFftMaxEnd.setMaximum(round(self.F/2, 2))
+        self.spinFftMaxEnd.setValue(round(self.F/2, 2))
+        self.spinFftMaxEnd.setSingleStep(0.01)
+        self.spinFftMaxEnd.setStepType(QDoubleSpinBox.StepType.DefaultStepType)
+        self.spinFftMaxEnd.setSuffix(" Hz")
+        self.spinFftMaxEnd.setToolTip("Stopping frequendy for fft maximum search")
+        self.spinFftMaxEnd.setCorrectionMode(QDoubleSpinBox.CorrectionMode.CorrectToNearestValue)
+        self.spinFftMaxEnd.setAccelerated(True)
+        self.spinFftMaxEnd.setKeyboardTracking(False)
+        self.spinFftMaxEnd.valueChanged.connect(lambda f: self.setFftMaxRange(end=f))
 
         volumeTimeLayout.addWidget(self.spinVolumeStartTime)
         groupBoxVolumeTime.setLayout(volumeTimeLayout)
@@ -364,8 +397,8 @@ class MainWindow(QtWidgets.QMainWindow):
             yfs = abs(yf[0:N//2])
             yfs[1:-1] *= 2.0 
 
-            fftMaxStart = 0 if self.fftMaxRange[0] == "min" else len(xf)-1 if self.fftMaxRange[0] == "max" else np.min([self.fftMaxRange[0], len(xf)])-1 # index to start searching for maximum fft value
-            fftMaxEnd = 0 if self.fftMaxRange[1] == "min" else len(xf)-1 if self.fftMaxRange[1] == "max" else np.min([self.fftMaxRange[1], len(xf)])-1 # index to stop searching for maximum fft value
+            fftMaxStart = 0 if self.fftMaxRange[0] == "min" else len(xf)-1 if self.fftMaxRange[0] == "max" else np.min([round(self.fftMaxRange[0]*N/self.F), len(xf)])-1 # index to start searching for maximum fft value
+            fftMaxEnd = 0 if self.fftMaxRange[1] == "min" else len(xf)-1 if self.fftMaxRange[1] == "max" else np.min([round(self.fftMaxRange[1]*N/self.F), len(xf)])-1 # index to stop searching for maximum fft value
             fftYRange = [0, 0]
             if self.useSPL:
                 yfsLog = self.lin2dbSPL(yfs)  
@@ -482,6 +515,14 @@ class MainWindow(QtWidgets.QMainWindow):
         self.spinFftStartTime.setSingleStep(1/self.F)
         self.spinFftEndTime.setSingleStep(1/self.F)
         self.spinVolumeStartTime.setSingleStep(1/self.F)
+        self.spinFftMaxStart.setMaximum(round(self.F/2, 2))
+        self.spinFftMaxEnd.setMaximum(round(self.F/2, 2))
+        # update fft max range spinners with new maximum value
+        newFftMaxRangeStart = 0 if self.fftMaxRange[0] == "min" else self.F/2 if self.fftMaxRange[0] == "max" else self.fftMaxRange[0]
+        newFftMaxRangeEnd = 0 if self.fftMaxRange[1] == "min" else self.F/2 if self.fftMaxRange[1] == "max" else self.fftMaxRange[1]
+        self.spinFftMaxStart.setValue(newFftMaxRangeStart)
+        self.spinFftMaxEnd.setValue(newFftMaxRangeEnd)
+        
 
     def setCaptureTime(self, captureTime):
         if captureTime > 0:
@@ -573,6 +614,38 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.fftRange[1] = "max"
             else:
                 self.fftRange[1] = round(end*self.F)
+
+    def setFftMaxRange(self, start=None, end=None):
+        """ Update the FFT maximum‑search frequency range. 
+        
+        Parameters 
+        ---------- 
+            start : float or None 
+                Lower bound of the search range. Special handling: 
+                    - 0 → stored as "min" 
+                    - F/2 (rounded to 2 decimals) → stored as "max" 
+                    - otherwise the value is rounded to 2 decimals and stored. 
+            end : float or None 
+                Upper bound of the search range. Same rules as `start`. 
+        Notes 
+        ----- 
+            The function writes the processed values into `self.fftMaxRange`, 
+            where index 0 is the start value and index 1 is the end value. 
+        """
+        if start != None:
+            if start == 0:
+                self.fftMaxRange[0] = "min"
+            elif start == round(self.F/2, 2):
+                self.fftMaxRange[0] = "max"
+            else:
+                self.fftMaxRange[0] = round(start, 2)
+        if end != None:
+            if end == 0:
+                self.fftMaxRange[1] = "min"
+            elif end == round(self.F/2, 2):
+                self.fftMaxRange[1] = "max"
+            else:
+                self.fftMaxRange[1] = round(end, 2)
 
     def setVolumeRange(self, start=None, end=None):
         if start != None:
