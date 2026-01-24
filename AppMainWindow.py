@@ -56,6 +56,8 @@ class MainWindow(QtWidgets.QMainWindow):
         else:
             self.fftMaxRange = [x if x == "min" or x == "max" else float(x) if self._isFloat(x) else "min" if i == 0 else "max" for i, x in enumerate(self.fftMaxRange[0:2])] # limit list to the first 2 values. Use them if they are min, max or float. Otherwise set min if first value or max if second value. 
         self.volumeRange = [round(max(0, self.N-0.3*self.F)), "max"]
+        self.spectFreqResolution = 0.1
+        self.spectTimeResolution = 1
         self.captureActive = False # Is the input port active
         self.capturePaused = False # Is the receiving of data paused
         self.serialPorts = list()
@@ -463,8 +465,9 @@ class MainWindow(QtWidgets.QMainWindow):
             N = len(self.ys)
             if N > 1:
                 ys = np.array(self.ys)
-                win = windows.gaussian(50, std=12, sym=True)
-                sft = ShortTimeFFT(win=win, hop=2, fs=self.F, fft_mode="onesided", scale_to="psd")
+                winLength = round(self.F/self.spectFreqResolution)
+                win = windows.gaussian(winLength, std=winLength*0.3, sym=True)
+                sft = ShortTimeFFT(win=win, hop=round(self.spectTimeResolution*self.F), fs=self.F, fft_mode="onesided", scale_to="psd")
                 spect = sft.spectrogram(ys, detr=None, padding="zeros")
                 self.spectImg.setImage(spect.T, autoLevels=True)
                 tr = QTransform()
