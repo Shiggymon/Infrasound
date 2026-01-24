@@ -72,8 +72,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.plotArea = pg.GraphicsLayoutWidget()
         self.plotGraph = pg.PlotItem()
         self.fftGraph = pg.PlotItem()
+        self.spectContainer = pg.GraphicsLayout()
         self.spectGraph = pg.PlotItem()
         self.spectImg = pg.ImageItem()
+        self.spectColorBar = pg.ColorBarItem(interactive=False)
         buttonReloadSerial = QPushButton("Reload")
         self.comboSelectSerial = QComboBox()
         self.buttonStartCapture = QPushButton("Start")
@@ -129,11 +131,14 @@ class MainWindow(QtWidgets.QMainWindow):
         self.fftGraph.setMouseEnabled(x=False, y=False)
         self.fftGraph.enableAutoRange(enable=False)
         self.fftGraph.hideButtons()
+        self.spectContainer.addItem(self.spectGraph,0, 0)
+        self.spectContainer.addItem(self.spectColorBar,0, 1)
         self.spectGraph.addItem(self.spectImg)
         self.spectGraph.setMenuEnabled(False)
         self.spectGraph.setMouseEnabled(x=False, y=False)
         self.spectGraph.enableAutoRange(enable=False)
         self.spectGraph.hideButtons()
+        self.spectColorBar.setMenuEnabled(False)
 
 
         # Set Bot Layout with a settings Grid
@@ -357,8 +362,11 @@ class MainWindow(QtWidgets.QMainWindow):
             self.fftGraph.getAxis("left").setLabel("Pressure ", units="Pa")
         self.spectGraph.setLabel("bottom", "Time", units="s")
         self.spectGraph.setLabel("left", "Frequency", units="Hz")
-        self.spectColors = pg.colormap.get(name="plasma")
-        self.spectImg.setLookupTable(self.spectColors.getLookupTable())
+        self.spectColorBar.setColorMap(pg.colormap.get(name="plasma"))
+        self.spectColorBar.setLabel("top", "dbₛₚₗ")        
+        self.spectColorBar.setImageItem(self.spectImg)
+        
+        # self.spectImg.setLookupTable(self.spectColors.getLookupTable())
         self.q = q
         self.displayPipe = p
         
@@ -441,8 +449,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 yfs = abs(yf[0:N//2])
                 yfs[1:-1] *= 2.0 
 
-                fftMaxStart = 0 if self.fftMaxRange[0] == "min" else len(xf)-1 if self.fftMaxRange[0] == "max" else np.min([round(self.fftMaxRange[0]*N/self.F), len(xf)])-1 # index to start searching for maximum fft value
-                fftMaxEnd = 0 if self.fftMaxRange[1] == "min" else len(xf)-1 if self.fftMaxRange[1] == "max" else np.min([round(self.fftMaxRange[1]*N/self.F), len(xf)])-1 # index to stop searching for maximum fft value
+                fftMaxStart = 0 if self.fftMaxRange[0] == "min" else len(xf)-1 if self.fftMaxRange[0] == "max" else np.min([round(self.fftMaxRange[0]*N/self.F), len(xf)-1]) # index to start searching for maximum fft value
+                fftMaxEnd = 0 if self.fftMaxRange[1] == "min" else len(xf)-1 if self.fftMaxRange[1] == "max" else np.min([round(self.fftMaxRange[1]*N/self.F), len(xf)-1]) # index to stop searching for maximum fft value
                 fftYRange = [0, 0]
                 if self.useSPL:
                     yfsLog = self.lin2dbSPL(yfs)  
@@ -491,10 +499,14 @@ class MainWindow(QtWidgets.QMainWindow):
                     win = windows.gaussian(winLength, std=winLength*0.3, sym=True)
                     sft = ShortTimeFFT(win=win, hop=round(self.spectTimeResolution*self.F), fs=self.F, fft_mode="onesided", scale_to="psd")
                     spect = sft.spectrogram(ys, detr=None, padding="zeros")
+                    zRange = [0, 0]
                     if self.useSPL:
-                        self.spectImg.setImage(self.lin2dbSPL(spect.T), autoLevels=True)
+                        logSpect = self.lin2dbSPL(spect.T)
+                        self.spectImg.setImage(logSpect, autoLevels=False)
+                        zRange = [np.nanmin(logSpect), np.nanmax(logSpect)]
                     else:
-                        self.spectImg.setImage(spect.T, autoLevels=True)
+                        self.spectImg.setImage(spect.T, autoLevels=False)
+                        zRange = [np.nanmin(spect), np.nanmax(spect)]
                     tr = QTransform()
                     times = sft.extent(N)[:2]
                     freqs = sft.extent(N)[2:]
@@ -503,8 +515,16 @@ class MainWindow(QtWidgets.QMainWindow):
                     tr.translate((times[0]+self.xs[0]/self.F), freqs[0])
                     tr.scale(dt, df)
                     self.spectImg.setTransform(tr)
+                    zRange = [x if np.isfinite(x) else -20 if i == 0 else 120 for i, x in enumerate(zRange)]
+                    if self.fftYLimitAuto:
+                        pass
+                    else:
+                        zRange = [-30 if self.useSPL else 0, self.fftYLimit]
+                    self.spectImg.setLevels(zRange)
+                    self.spectColorBar.setLevels(zRange)
                     self.spectGraph.setYRange(min=0, max=self.F/2, padding=0)
                     self.spectGraph.setXRange(min=times[0]+self.xs[0]/self.F, max=times[1]+self.xs[0]/self.F, padding=0)
+                    
                 else:
                     self.spectImg.clear()
             
@@ -794,10 +814,10 @@ class MainWindow(QtWidgets.QMainWindow):
         elif view.lower() == "spectogram":
             self.fPlotType = "spectogram"
             self.buttonViewSpect.setChecked(True)
-            if currentPlot is not self.spectGraph:
+            if currentPlot is not self.spectContainer:
                 if currentPlot is not None:
                     self.plotArea.removeItem(currentPlot)
-                self.plotArea.addItem(self.spectGraph, row=0, col=1)
+                self.plotArea.addItem(self.spectContainer, row=0, col=1)
 
 
     def updateSettings(self):
