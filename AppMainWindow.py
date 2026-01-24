@@ -1,11 +1,13 @@
 from PyQt6 import QtCore, QtWidgets
 from PyQt6.QtWidgets import QApplication, QPushButton, QVBoxLayout, QWidget, QHBoxLayout, QGridLayout, QLabel, QComboBox, QDoubleSpinBox, QFrame, QGroupBox, QRadioButton, QFileDialog, QCheckBox, QMessageBox
 from PyQt6.QtCore import QTimer, QSettings, QSize, QRegularExpression
-from PyQt6.QtGui import QImage, QGuiApplication, QRegularExpressionValidator, QValidator
+from PyQt6.QtGui import QImage, QGuiApplication, QRegularExpressionValidator, QValidator, QTransform
 from multiprocessing import Queue, connection
 import pyqtgraph as pg
 import pyqtgraph.exporters
+from pyqtgraph.Qt import QtGui
 from scipy.fft import fft,fftfreq
+from scipy.signal import ShortTimeFFT, windows
 from scipy.io import wavfile
 import numpy as np
 import serial.tools.list_ports
@@ -43,6 +45,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.F = float(self.settings.value("Data/Samplerate", 50)) # Samplerate F
         self.N = int(self.settings.value("Data/SamplesBuffered", 500)) # number of samples retained in buffer
         self.useSPL = self.settings.value("Display/Unit", "dbSPL") == "dbSPL" # Output fft data in dBSPL instead of Pa
+        self.fPlotType = 'spectogram' # fft, spectogram
         self.fftYLimitAuto = self.settings.value("Display/FftYLimit", "auto").lower() == "auto" # calculate upper limit from current values
         self.fftYLimit = 90 if self.fftYLimitAuto else float(self.settings.value("Display/FftYLimit",90)) # upper limit of the fft y axis
         self.fftRange = ["min", "max"]
@@ -67,6 +70,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.plotArea = pg.GraphicsLayoutWidget()
         self.plotGraph = pg.PlotItem()
         self.fftGraph = pg.PlotItem()
+        self.spectGraph = pg.PlotItem()
+        self.spectImg = pg.ImageItem()
         buttonReloadSerial = QPushButton("Reload")
         self.comboSelectSerial = QComboBox()
         self.buttonStartCapture = QPushButton("Start")
@@ -116,7 +121,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.fftGraph.setMouseEnabled(x=False, y=False)
         self.fftGraph.enableAutoRange(enable=False)
         self.fftGraph.hideButtons()
-        
+        self.spectGraph.addItem(self.spectImg)
 
 
         # Set Bot Layout with a settings Grid
@@ -325,6 +330,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self.fftGraph.getAxis("left").setLabel("Pressure ", units="dB_SPL")
         else:
             self.fftGraph.getAxis("left").setLabel("Pressure ", units="Pa")
+        self.spectColors = pg.colormap.get(name="plasma")
+        self.spectImg.setLookupTable(self.spectColors.getLookupTable())
         self.q = q
         self.displayPipe = p
 
@@ -390,61 +397,86 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def updateFPlot(self):
         T = 1/self.F 
-        fftStart = 0 if self.fftRange[0] == "min" else np.min([self.N,len(self.ys)])-1 if self.fftRange[0] == "max" else np.min([self.fftRange[0], len(self.ys)])-1
-        fftEnd = 0 if self.fftRange[1] == "min" else np.min([self.N,len(self.ys)])-1 if self.fftRange[1] == "max" else np.min([self.fftRange[1], len(self.ys)])-1
-        N = len(self.ys[fftStart:(fftEnd+1)])
-        if N > 1:
-            # Enough values to calculate an fft are captured and selected. 
-            if N%2:
-                N += 1
-            ys = np.array(self.ys[fftStart:(fftEnd+1)])
-            yf = fft(ys, n=N, norm="forward")
-            xf = fftfreq(N, T)[:N//2]
-            yfs = abs(yf[0:N//2])
-            yfs[1:-1] *= 2.0 
+        if self.fPlotType == "fft":
+            fftStart = 0 if self.fftRange[0] == "min" else np.min([self.N,len(self.ys)])-1 if self.fftRange[0] == "max" else np.min([self.fftRange[0], len(self.ys)])-1
+            fftEnd = 0 if self.fftRange[1] == "min" else np.min([self.N,len(self.ys)])-1 if self.fftRange[1] == "max" else np.min([self.fftRange[1], len(self.ys)])-1
+            N = len(self.ys[fftStart:(fftEnd+1)])
+            if N > 1:
+                # Enough values to calculate an fft are captured and selected. 
+                if N%2:
+                    N += 1
+                ys = np.array(self.ys[fftStart:(fftEnd+1)])
+                yf = fft(ys, n=N, norm="forward")
+                xf = fftfreq(N, T)[:N//2]
+                yfs = abs(yf[0:N//2])
+                yfs[1:-1] *= 2.0 
 
-            fftMaxStart = 0 if self.fftMaxRange[0] == "min" else len(xf)-1 if self.fftMaxRange[0] == "max" else np.min([round(self.fftMaxRange[0]*N/self.F), len(xf)])-1 # index to start searching for maximum fft value
-            fftMaxEnd = 0 if self.fftMaxRange[1] == "min" else len(xf)-1 if self.fftMaxRange[1] == "max" else np.min([round(self.fftMaxRange[1]*N/self.F), len(xf)])-1 # index to stop searching for maximum fft value
-            fftYRange = [0, 0]
-            if self.useSPL:
-                yfsLog = self.lin2dbSPL(yfs)  
-                self.lineF.setData(xf, yfsLog)
-                if fftMaxEnd > fftMaxStart:
-                    yfsMaxIdx = np.argmax(yfsLog[fftMaxStart:fftMaxEnd]) + fftMaxStart # search max between fftMaxStart and fftMaxEnd and fix offset to xf by adding fftMaxStart
-                    self.lineFMax.setData([xf[yfsMaxIdx]], [yfsLog[yfsMaxIdx]])
-                    self.fftGraph.addLegend().getLabel(self.lineFMax).setText("max: {maxval:.2f} dbₛₚₗ @ {freq:.1f} Hz".format(maxval=yfsLog[yfsMaxIdx], freq=xf[yfsMaxIdx]))
+                fftMaxStart = 0 if self.fftMaxRange[0] == "min" else len(xf)-1 if self.fftMaxRange[0] == "max" else np.min([round(self.fftMaxRange[0]*N/self.F), len(xf)])-1 # index to start searching for maximum fft value
+                fftMaxEnd = 0 if self.fftMaxRange[1] == "min" else len(xf)-1 if self.fftMaxRange[1] == "max" else np.min([round(self.fftMaxRange[1]*N/self.F), len(xf)])-1 # index to stop searching for maximum fft value
+                fftYRange = [0, 0]
+                if self.useSPL:
+                    yfsLog = self.lin2dbSPL(yfs)  
+                    self.lineF.setData(xf, yfsLog)
+                    if fftMaxEnd > fftMaxStart:
+                        yfsMaxIdx = np.argmax(yfsLog[fftMaxStart:fftMaxEnd]) + fftMaxStart # search max between fftMaxStart and fftMaxEnd and fix offset to xf by adding fftMaxStart
+                        self.lineFMax.setData([xf[yfsMaxIdx]], [yfsLog[yfsMaxIdx]])
+                        self.fftGraph.addLegend().getLabel(self.lineFMax).setText("max: {maxval:.2f} dbₛₚₗ @ {freq:.1f} Hz".format(maxval=yfsLog[yfsMaxIdx], freq=xf[yfsMaxIdx]))
+                    else:
+                        self.lineFMax.setData([], [])
+                        self.fftGraph.addLegend().getLabel(self.lineFMax).setText("invalid max. search limits")
+                    if self.fftYLimitAuto:
+                        fftYRange[1] = np.max(yfsLog)
+                    else:
+                        fftYRange[1] = self.fftYLimit
                 else:
-                    self.lineFMax.setData([], [])
-                    self.fftGraph.addLegend().getLabel(self.lineFMax).setText("invalid max. search limits")
-                if self.fftYLimitAuto:
-                    fftYRange[1] = np.max(yfsLog)
-                else:
-                    fftYRange[1] = self.fftYLimit
-            else:
-                self.lineF.setData(xf, yfs)
-                if fftMaxEnd > fftMaxStart:
-                    yfsMaxIdx = np.argmax(yfs[fftMaxStart:fftMaxEnd]) + fftMaxStart # search max between fftMaxStart and fftMaxEnd and fix offset to xf by adding fftMaxStart
-                    self.lineFMax.setData([xf[yfsMaxIdx]], [yfs[yfsMaxIdx]])
-                    self.fftGraph.addLegend().getLabel(self.lineFMax).setText("max: {maxval:.2f} Pa @ {freq:.1f} Hz".format(maxval=yfs[yfsMaxIdx], freq=xf[yfsMaxIdx]))
-                else:
-                    self.lineFMax.setData([], [])
-                    self.fftGraph.addLegend().getLabel(self.lineFMax).setText("invalid max. search limits")
-                if self.fftYLimitAuto:
-                    fftYRange[1] = np.max(yfs)
-                else:
-                    fftYRange[1] = self.fftYLimit
-            self.fftGraph.setYRange(min=0, max=fftYRange[1], padding=0.1)
-            self.fftGraph.setXRange(min=xf[0], max=xf[-1], padding=0)
+                    self.lineF.setData(xf, yfs)
+                    if fftMaxEnd > fftMaxStart:
+                        yfsMaxIdx = np.argmax(yfs[fftMaxStart:fftMaxEnd]) + fftMaxStart # search max between fftMaxStart and fftMaxEnd and fix offset to xf by adding fftMaxStart
+                        self.lineFMax.setData([xf[yfsMaxIdx]], [yfs[yfsMaxIdx]])
+                        self.fftGraph.addLegend().getLabel(self.lineFMax).setText("max: {maxval:.2f} Pa @ {freq:.1f} Hz".format(maxval=yfs[yfsMaxIdx], freq=xf[yfsMaxIdx]))
+                    else:
+                        self.lineFMax.setData([], [])
+                        self.fftGraph.addLegend().getLabel(self.lineFMax).setText("invalid max. search limits")
+                    if self.fftYLimitAuto:
+                        fftYRange[1] = np.max(yfs)
+                    else:
+                        fftYRange[1] = self.fftYLimit
+                self.fftGraph.setYRange(min=0, max=fftYRange[1], padding=0.1)
+                self.fftGraph.setXRange(min=xf[0], max=xf[-1], padding=0)
+                
+                self.lineFMaxStart.setData([xf[fftMaxStart], xf[fftMaxStart]],self.fftGraph.getViewBox().viewRange()[1])
+                self.lineFMaxEnd.setData([xf[fftMaxEnd], xf[fftMaxEnd]],self.fftGraph.getViewBox().viewRange()[1])
+            else: 
+                # Not enough data captured or selected. 
+                # Blank the fft graph and set info text in legend.
+                # This path is also taken if fftStart >= fftEnd
+                self.lineF.setData([], [])
+                self.lineFMax.setData([], [])
+                self.fftGraph.addLegend().getLabel(self.lineFMax).setText("no Data!")
+        else:
+            # spectogram visualization
+            currentPlot = self.plotArea.getItem(0, 1)
+            if currentPlot is not self.spectGraph:
+                if currentPlot is not None:
+                    self.plotArea.removeItem(currentPlot)
+                self.plotArea.addItem(self.spectGraph, row=0, col=1)
+            N = len(self.ys)
+            if N > 1:
+                ys = np.array(self.ys)
+                win = windows.gaussian(50, std=12, sym=True)
+                sft = ShortTimeFFT(win=win, hop=2, fs=self.F, fft_mode="onesided", scale_to="psd")
+                spect = sft.spectrogram(ys, detr=None, padding="zeros")
+                self.spectImg.setImage(spect.T, autoLevels=True)
+                tr = QTransform()
+                times = sft.extent(N)[:2]
+                freqs = sft.extent(N)[2:]
+                dt = (times[1] - times[0])/spect.shape[1]
+                df = (freqs[1] - freqs[0])/spect.shape[0]
+                tr.translate((times[0]+self.xs[0]/self.F), freqs[0])
+                tr.scale(dt, df)
+                self.spectImg.setTransform(tr)
+                pass
             
-            self.lineFMaxStart.setData([xf[fftMaxStart], xf[fftMaxStart]],self.fftGraph.getViewBox().viewRange()[1])
-            self.lineFMaxEnd.setData([xf[fftMaxEnd], xf[fftMaxEnd]],self.fftGraph.getViewBox().viewRange()[1])
-        else: 
-            # Not enough data captured or selected. 
-            # Blank the fft graph and set info text in legend.
-            # This path is also taken if fftStart >= fftEnd
-            self.lineF.setData([], [])
-            self.lineFMax.setData([], [])
-            self.fftGraph.addLegend().getLabel(self.lineFMax).setText("no Data!")
     
     def updateComms(self):
         while self.displayPipe.poll():
