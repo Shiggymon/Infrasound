@@ -65,7 +65,7 @@ class MainWindow(QtWidgets.QMainWindow):
         mainWidget = QWidget()
         vLayout = QVBoxLayout()
         hTopLayout = QHBoxLayout()
-        settingsLayout = QGridLayout()
+        self.settingsLayout = QGridLayout()
         settingsSeparator1 = QFrame()
         settingsSeparator2 = QFrame()
         settingsSeparator3 = QFrame()
@@ -92,7 +92,7 @@ class MainWindow(QtWidgets.QMainWindow):
         fftTimeLayout = QHBoxLayout()
         self.spinFftStartTime = self.CustomDoubleSpinBox()
         self.spinFftEndTime = self.CustomDoubleSpinBox()
-        groupBoxFftMaxRange = QGroupBox("FFT Analysis Search Range")
+        self.groupBoxFftMaxRange = QGroupBox("FFT Analysis Search Range")
         fftMaxRangeLayout = QHBoxLayout()
         self.spinFftMaxStart = self.CustomDoubleSpinBox()
         self.spinFftMaxEnd = self.CustomDoubleSpinBox()
@@ -142,29 +142,29 @@ class MainWindow(QtWidgets.QMainWindow):
 
 
         # Set Bot Layout with a settings Grid
-        vLayout.addLayout(settingsLayout)
-        settingsLayout.setHorizontalSpacing(20)
+        vLayout.addLayout(self.settingsLayout)
+        self.settingsLayout.setHorizontalSpacing(20)
 
-        settingsLayout.addWidget(settingsSeparator1,1, 2, 6, 1)
-        settingsLayout.addWidget(settingsSeparator2,1, 4, 6, 1)
-        settingsLayout.addWidget(settingsSeparator3,1, 6, 6, 1)
+        self.settingsLayout.addWidget(settingsSeparator1,1, 2, 6, 1)
+        self.settingsLayout.addWidget(settingsSeparator2,1, 4, 6, 1)
+        self.settingsLayout.addWidget(settingsSeparator3,1, 6, 6, 1)
         settingsSeparator1.setFrameShape(QFrame.Shape.VLine)
         settingsSeparator2.setFrameShape(QFrame.Shape.VLine)
         settingsSeparator3.setFrameShape(QFrame.Shape.VLine)
-        settingsLayout.setColumnStretch(1,1)
-        settingsLayout.setColumnStretch(3,1)
-        settingsLayout.setColumnStretch(5,1)
-        settingsLayout.setColumnStretch(7,1)
+        self.settingsLayout.setColumnStretch(1,1)
+        self.settingsLayout.setColumnStretch(3,1)
+        self.settingsLayout.setColumnStretch(5,1)
+        self.settingsLayout.setColumnStretch(7,1)
 
         # Settings Column 1: Serial Connection and data Recording
         # Settings Column for selecting the serial connection and cntroling the capture
-        settingsLayout.addWidget(QLabel("Data Capturing"),0,1)
-        settingsLayout.addWidget(self.comboSelectSerial,1,1)
-        settingsLayout.addWidget(buttonReloadSerial,2,1)
-        settingsLayout.addWidget(self.buttonLoadData,3,1)
-        settingsLayout.addWidget(self.buttonStartCapture,4,1)
-        settingsLayout.addWidget(self.buttonPauseCapture,5,1)
-        settingsLayout.addWidget(self.buttonStopCapture,6,1)
+        self.settingsLayout.addWidget(QLabel("Data Capturing"),0,1)
+        self.settingsLayout.addWidget(self.comboSelectSerial,1,1)
+        self.settingsLayout.addWidget(buttonReloadSerial,2,1)
+        self.settingsLayout.addWidget(self.buttonLoadData,3,1)
+        self.settingsLayout.addWidget(self.buttonStartCapture,4,1)
+        self.settingsLayout.addWidget(self.buttonPauseCapture,5,1)
+        self.settingsLayout.addWidget(self.buttonStopCapture,6,1)
         buttonReloadSerial.clicked.connect(self.reloadSerial)
         self.comboSelectSerial.setEditable(True)
         self.comboSelectSerial.setCurrentText(self.settings.value("Serial/Port", ""))
@@ -178,10 +178,10 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Settings Column 3: Data Settings
         # Settings column for setting input parameters like capture time and samplerate
-        settingsLayout.addWidget(QLabel("Data Settings"),0,3)
-        settingsLayout.addWidget(self.spinSamplerate,1,3)
-        settingsLayout.addWidget(self.spinCaptureTime,2,3)
-        settingsLayout.addWidget(groupBoxCaptureInfo,4,3,3,1)
+        self.settingsLayout.addWidget(QLabel("Data Settings"),0,3)
+        self.settingsLayout.addWidget(self.spinSamplerate,1,3)
+        self.settingsLayout.addWidget(self.spinCaptureTime,2,3)
+        self.settingsLayout.addWidget(groupBoxCaptureInfo,4,3,3,1)
         
         self.spinSamplerate.setMinimum(0.01)
         self.spinSamplerate.setMaximum(100000)
@@ -213,10 +213,10 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Settings Column 5: Analysis Settings
         # setting column for setting parameters used for the analysis like fft area
-        settingsLayout.addWidget(QLabel("Analysis Settings"),0,5)
-        settingsLayout.addWidget(groupBoxFftTime,1,5,2,1)
-        settingsLayout.addWidget(groupBoxFftMaxRange,3,5,2,1)
-        settingsLayout.addWidget(groupBoxVolumeTime,5,5,2,1)
+        self.settingsLayout.addWidget(QLabel("Analysis Settings"),0,5)
+        self.settingsLayout.addWidget(groupBoxFftTime,1,5,2,1)
+        self.settingsLayout.addWidget(self.groupBoxFftMaxRange,3,5,2,1)
+        self.settingsLayout.addWidget(groupBoxVolumeTime,5,5,2,1)
         
         fftTimeLayout.addWidget(self.spinFftStartTime)
         fftTimeLayout.addWidget(self.spinFftEndTime)
@@ -249,7 +249,7 @@ class MainWindow(QtWidgets.QMainWindow):
         fftMaxRangeLayout.addWidget(self.spinFftMaxStart)
         fftMaxRangeLayout.addWidget(self.spinFftMaxEnd)
 
-        groupBoxFftMaxRange.setLayout(fftMaxRangeLayout)
+        self.groupBoxFftMaxRange.setLayout(fftMaxRangeLayout)
 
         self.spinFftMaxStart.setMinimum(0)
         self.spinFftMaxStart.setMaximum(round(self.F/2, 2))
@@ -293,7 +293,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.buttonViewFft = QPushButton("FFT")
         self.buttonViewSpect = QPushButton("Spectogram")
         # settings column for exporting data 
-        settingsLayout.addWidget(QLabel("Display and Data Saving"),0,7)
+        self.settingsLayout.addWidget(QLabel("Display and Data Saving"),0,7)
         buttonGroupViewRight.addButton(self.buttonViewFft)
         buttonGroupViewRight.addButton(self.buttonViewSpect)
         buttonGroupViewRight.setExclusive(True)
@@ -303,11 +303,11 @@ class MainWindow(QtWidgets.QMainWindow):
         fftYLimitLayout.addWidget(QLabel("FFT y-limit: "))
         fftYLimitLayout.addWidget(self.spinFftYLimit)
         fftYLimitLayout.addWidget(cbFftYLimitAuto)
-        settingsLayout.addWidget(groupBoxViewRight,1,7, 2, 1)
-        settingsLayout.addLayout(fftYLimitLayout,3,7)
-        settingsLayout.addWidget(buttonExportPng,4,7)
-        settingsLayout.addWidget(buttonExportCsv,5,7)
-        settingsLayout.addWidget(buttonExportWav,6,7)
+        self.settingsLayout.addWidget(groupBoxViewRight,1,7, 2, 1)
+        self.settingsLayout.addLayout(fftYLimitLayout,3,7)
+        self.settingsLayout.addWidget(buttonExportPng,4,7)
+        self.settingsLayout.addWidget(buttonExportCsv,5,7)
+        self.settingsLayout.addWidget(buttonExportWav,6,7)
         self.buttonViewFft.clicked.connect(lambda :self.switchView("fft"))
         self.buttonViewFft.setCheckable(True)
         self.buttonViewSpect.clicked.connect(lambda :self.switchView("spectogram"))
@@ -811,6 +811,15 @@ class MainWindow(QtWidgets.QMainWindow):
                 if currentPlot is not None:
                     self.plotArea.removeItem(currentPlot)
                 self.plotArea.addItem(self.fftGraph, row=0, col=1)
+            item = self.settingsLayout.itemAtPosition(3,  5)
+            if item is not self.groupBoxFftMaxRange:
+                if item is not None:
+                    widget = item.widget()
+                    if widget is not None and widget is not self.groupBoxFftMaxRange:
+                        self.settingsLayout.removeWidget(widget)
+                        widget.setParent(None)
+                self.settingsLayout.addWidget(self.groupBoxFftMaxRange, 3, 5, 2, 1)
+                self.groupBoxFftMaxRange.setEnabled(True)
         elif view.lower() == "spectogram":
             self.fPlotType = "spectogram"
             self.buttonViewSpect.setChecked(True)
@@ -818,7 +827,13 @@ class MainWindow(QtWidgets.QMainWindow):
                 if currentPlot is not None:
                     self.plotArea.removeItem(currentPlot)
                 self.plotArea.addItem(self.spectContainer, row=0, col=1)
-
+            item = self.settingsLayout.itemAtPosition(3,  5)
+            if item is not None:
+                widget = item.widget()
+                if widget is not None:
+                    widget.setEnabled(False)
+                #     self.settingsLayout.removeWidget(widget)
+                #     widget.setParent(None)
 
     def updateSettings(self):
         # minor versions update in place or set compatible default values at first update
