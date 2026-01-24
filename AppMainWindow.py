@@ -130,6 +130,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.fftGraph.enableAutoRange(enable=False)
         self.fftGraph.hideButtons()
         self.spectGraph.addItem(self.spectImg)
+        self.spectGraph.setMenuEnabled(False)
+        self.spectGraph.setMouseEnabled(x=False, y=False)
+        self.spectGraph.enableAutoRange(enable=False)
+        self.spectGraph.hideButtons()
 
 
         # Set Bot Layout with a settings Grid
@@ -351,6 +355,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self.fftGraph.getAxis("left").setLabel("Pressure ", units="dB_SPL")
         else:
             self.fftGraph.getAxis("left").setLabel("Pressure ", units="Pa")
+        self.spectGraph.setLabel("bottom", "Time", units="s")
+        self.spectGraph.setLabel("left", "Frequency", units="Hz")
         self.spectColors = pg.colormap.get(name="plasma")
         self.spectImg.setLookupTable(self.spectColors.getLookupTable())
         self.q = q
@@ -486,7 +492,10 @@ class MainWindow(QtWidgets.QMainWindow):
                 win = windows.gaussian(winLength, std=winLength*0.3, sym=True)
                 sft = ShortTimeFFT(win=win, hop=round(self.spectTimeResolution*self.F), fs=self.F, fft_mode="onesided", scale_to="psd")
                 spect = sft.spectrogram(ys, detr=None, padding="zeros")
-                self.spectImg.setImage(spect.T, autoLevels=True)
+                if self.useSPL:
+                    self.spectImg.setImage(self.lin2dbSPL(spect.T), autoLevels=True)
+                else:
+                    self.spectImg.setImage(spect.T, autoLevels=True)
                 tr = QTransform()
                 times = sft.extent(N)[:2]
                 freqs = sft.extent(N)[2:]
@@ -495,7 +504,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 tr.translate((times[0]+self.xs[0]/self.F), freqs[0])
                 tr.scale(dt, df)
                 self.spectImg.setTransform(tr)
-                pass
+                self.spectGraph.setYRange(min=0, max=self.F/2, padding=0)
+                self.spectGraph.setXRange(min=times[0]+self.xs[0]/self.F, max=times[1]+self.xs[0]/self.F, padding=0)
             
     
     def updateComms(self):
