@@ -86,7 +86,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.capResolutionLabel = QLabel()
         groupBoxCaptureInfo = QGroupBox("Capture Info")
         captureInfoLayout = QVBoxLayout()
-        groupBoxFftTime = QGroupBox("FFT Range")
+        groupBoxFftTime = QGroupBox("Analysis Range")
         fftTimeLayout = QHBoxLayout()
         self.spinFftStartTime = self.CustomDoubleSpinBox()
         self.spinFftEndTime = self.CustomDoubleSpinBox()
@@ -263,7 +263,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.spinFftMaxEnd.setSingleStep(0.01)
         self.spinFftMaxEnd.setStepType(QDoubleSpinBox.StepType.DefaultStepType)
         self.spinFftMaxEnd.setSuffix(" Hz")
-        self.spinFftMaxEnd.setToolTip("Stopping frequendy for fft maximum search")
+        self.spinFftMaxEnd.setToolTip("Stopping frequency for fft maximum search")
         self.spinFftMaxEnd.setCorrectionMode(QDoubleSpinBox.CorrectionMode.CorrectToNearestValue)
         self.spinFftMaxEnd.setAccelerated(True)
         self.spinFftMaxEnd.setKeyboardTracking(False)
@@ -427,15 +427,15 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def updateFPlot(self):
         T = 1/self.F 
+        fftStart = 0 if self.fftRange[0] == "min" else np.min([self.N,len(self.ys)])-1 if self.fftRange[0] == "max" else np.min([self.fftRange[0], len(self.ys)])-1
+        fftEnd = 0 if self.fftRange[1] == "min" else np.min([self.N,len(self.ys)])-1 if self.fftRange[1] == "max" else np.min([self.fftRange[1], len(self.ys)])-1
+        N = len(self.ys[fftStart:(fftEnd+1)])
+        ys = np.array(self.ys[fftStart:(fftEnd+1)])
         if self.fPlotType == "fft":
-            fftStart = 0 if self.fftRange[0] == "min" else np.min([self.N,len(self.ys)])-1 if self.fftRange[0] == "max" else np.min([self.fftRange[0], len(self.ys)])-1
-            fftEnd = 0 if self.fftRange[1] == "min" else np.min([self.N,len(self.ys)])-1 if self.fftRange[1] == "max" else np.min([self.fftRange[1], len(self.ys)])-1
-            N = len(self.ys[fftStart:(fftEnd+1)])
             if N > 1:
                 # Enough values to calculate an fft are captured and selected. 
                 if N%2:
                     N += 1
-                ys = np.array(self.ys[fftStart:(fftEnd+1)])
                 yf = fft(ys, n=N, norm="forward")
                 xf = fftfreq(N, T)[:N//2]
                 yfs = abs(yf[0:N//2])
@@ -485,27 +485,28 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.fftGraph.addLegend().getLabel(self.lineFMax).setText("no Data!")
         else:
             # spectogram visualization
-            N = len(self.ys)
             if N > 1:
-                ys = np.array(self.ys)
                 winLength = round(self.F/self.spectFreqResolution)
-                win = windows.gaussian(winLength, std=winLength*0.3, sym=True)
-                sft = ShortTimeFFT(win=win, hop=round(self.spectTimeResolution*self.F), fs=self.F, fft_mode="onesided", scale_to="psd")
-                spect = sft.spectrogram(ys, detr=None, padding="zeros")
-                if self.useSPL:
-                    self.spectImg.setImage(self.lin2dbSPL(spect.T), autoLevels=True)
+                if N >= winLength/2:
+                    win = windows.gaussian(winLength, std=winLength*0.3, sym=True)
+                    sft = ShortTimeFFT(win=win, hop=round(self.spectTimeResolution*self.F), fs=self.F, fft_mode="onesided", scale_to="psd")
+                    spect = sft.spectrogram(ys, detr=None, padding="zeros")
+                    if self.useSPL:
+                        self.spectImg.setImage(self.lin2dbSPL(spect.T), autoLevels=True)
+                    else:
+                        self.spectImg.setImage(spect.T, autoLevels=True)
+                    tr = QTransform()
+                    times = sft.extent(N)[:2]
+                    freqs = sft.extent(N)[2:]
+                    dt = (times[1] - times[0])/spect.shape[1]
+                    df = (freqs[1] - freqs[0])/spect.shape[0]
+                    tr.translate((times[0]+self.xs[0]/self.F), freqs[0])
+                    tr.scale(dt, df)
+                    self.spectImg.setTransform(tr)
+                    self.spectGraph.setYRange(min=0, max=self.F/2, padding=0)
+                    self.spectGraph.setXRange(min=times[0]+self.xs[0]/self.F, max=times[1]+self.xs[0]/self.F, padding=0)
                 else:
-                    self.spectImg.setImage(spect.T, autoLevels=True)
-                tr = QTransform()
-                times = sft.extent(N)[:2]
-                freqs = sft.extent(N)[2:]
-                dt = (times[1] - times[0])/spect.shape[1]
-                df = (freqs[1] - freqs[0])/spect.shape[0]
-                tr.translate((times[0]+self.xs[0]/self.F), freqs[0])
-                tr.scale(dt, df)
-                self.spectImg.setTransform(tr)
-                self.spectGraph.setYRange(min=0, max=self.F/2, padding=0)
-                self.spectGraph.setXRange(min=times[0]+self.xs[0]/self.F, max=times[1]+self.xs[0]/self.F, padding=0)
+                    self.spectImg.clear()
             
     
     def updateComms(self):
@@ -526,8 +527,9 @@ class MainWindow(QtWidgets.QMainWindow):
             except:
                 raise
 
-    def lin2dbSPL(self,x):
-        return 20*np.log10(x/(2*10**-5))
+    def lin2dbSPL(self,x, floorDb = -120):
+        eps = 10**(floorDb/20) # should be changed to use dbspl calculation if possible
+        return 20*np.log10(np.maximum(x, eps)/(2*10**-5))
     
     def reloadSerial(self):
         currentIndex = self.comboSelectSerial.currentIndex()
