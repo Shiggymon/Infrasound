@@ -1,5 +1,5 @@
 from PyQt6 import QtCore, QtWidgets
-from PyQt6.QtWidgets import QApplication, QPushButton, QVBoxLayout, QWidget, QHBoxLayout, QGridLayout, QLabel, QComboBox, QDoubleSpinBox, QFrame, QGroupBox, QRadioButton, QFileDialog, QCheckBox, QMessageBox
+from PyQt6.QtWidgets import QApplication, QPushButton, QVBoxLayout, QWidget, QHBoxLayout, QGridLayout, QLabel, QComboBox, QDoubleSpinBox, QFrame, QGroupBox, QRadioButton, QFileDialog, QCheckBox, QMessageBox, QButtonGroup
 from PyQt6.QtCore import QTimer, QSettings, QSize, QRegularExpression
 from PyQt6.QtGui import QImage, QGuiApplication, QRegularExpressionValidator, QValidator, QTransform
 from multiprocessing import Queue, connection
@@ -97,6 +97,12 @@ class MainWindow(QtWidgets.QMainWindow):
         groupBoxVolumeTime = QGroupBox("Volume Range")
         volumeTimeLayout = QHBoxLayout()
         self.spinVolumeStartTime = self.CustomDoubleSpinBox()
+        groupBoxViewRight = QGroupBox("Change Analysis View")
+        buttonGroupViewRight = QButtonGroup(self)
+        viewRightLayout = QHBoxLayout()
+        self.buttonViewFft = QPushButton("FFT")
+        self.buttonViewSpect = QPushButton("Spectogram")
+        
         buttonExportPng = QPushButton("Save (Image)")
         buttonExportCsv = QPushButton("Save (Text)")
         buttonExportWav = QPushButton("Save (Audio)")
@@ -275,15 +281,28 @@ class MainWindow(QtWidgets.QMainWindow):
         self.spinVolumeStartTime.valueChanged.connect(lambda t: self.setVolumeRange(start=t))
 
         # Settings Column 7: Saving Data
+        self.buttonViewFft = QPushButton("FFT")
+        self.buttonViewSpect = QPushButton("Spectogram")
         # settings column for exporting data 
         settingsLayout.addWidget(QLabel("Display and Data Saving"),0,7)
+        buttonGroupViewRight.addButton(self.buttonViewFft)
+        buttonGroupViewRight.addButton(self.buttonViewSpect)
+        buttonGroupViewRight.setExclusive(True)
+        viewRightLayout.addWidget(self.buttonViewFft)
+        viewRightLayout.addWidget(self.buttonViewSpect)
+        groupBoxViewRight.setLayout(viewRightLayout)
         fftYLimitLayout.addWidget(QLabel("FFT y-limit: "))
         fftYLimitLayout.addWidget(self.spinFftYLimit)
         fftYLimitLayout.addWidget(cbFftYLimitAuto)
-        settingsLayout.addLayout(fftYLimitLayout,1,7)
+        settingsLayout.addWidget(groupBoxViewRight,1,7, 2, 1)
+        settingsLayout.addLayout(fftYLimitLayout,3,7)
         settingsLayout.addWidget(buttonExportPng,4,7)
         settingsLayout.addWidget(buttonExportCsv,5,7)
         settingsLayout.addWidget(buttonExportWav,6,7)
+        self.buttonViewFft.clicked.connect(lambda :self.switchView("fft"))
+        self.buttonViewFft.setCheckable(True)
+        self.buttonViewSpect.clicked.connect(lambda :self.switchView("spectogram"))
+        self.buttonViewSpect.setCheckable(True)
         buttonExportPng.clicked.connect(lambda :self.exportData(png=True))
         buttonExportCsv.clicked.connect(lambda :self.exportData(csv=True))
         buttonExportWav.clicked.connect(lambda :self.exportData(wav=True))
@@ -336,6 +355,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.spectImg.setLookupTable(self.spectColors.getLookupTable())
         self.q = q
         self.displayPipe = p
+        
+        # UI setup update routines
+        self.switchView(self.fPlotType)
 
         # Setup Timers for periodic UI and Data Update
         self.updDataTimer = QTimer()
@@ -457,11 +479,6 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.fftGraph.addLegend().getLabel(self.lineFMax).setText("no Data!")
         else:
             # spectogram visualization
-            currentPlot = self.plotArea.getItem(0, 1)
-            if currentPlot is not self.spectGraph:
-                if currentPlot is not None:
-                    self.plotArea.removeItem(currentPlot)
-                self.plotArea.addItem(self.spectGraph, row=0, col=1)
             N = len(self.ys)
             if N > 1:
                 ys = np.array(self.ys)
@@ -751,6 +768,25 @@ class MainWindow(QtWidgets.QMainWindow):
             self.fftYLimitAuto = False
             self.settings.setValue("Display/FftYLimit", self.fftYLimit)
             self.spinFftYLimit.setEnabled(True)
+    
+    def switchView(self, view):
+        view = str(view)
+        currentPlot = self.plotArea.getItem(0, 1)
+        if view.lower() == "fft":
+            self.fPlotType = "fft"
+            self.buttonViewFft.setChecked(True)
+            if currentPlot is not self.fftGraph:
+                if currentPlot is not None:
+                    self.plotArea.removeItem(currentPlot)
+                self.plotArea.addItem(self.fftGraph, row=0, col=1)
+        elif view.lower() == "spectogram":
+            self.fPlotType = "spectogram"
+            self.buttonViewSpect.setChecked(True)
+            if currentPlot is not self.spectGraph:
+                if currentPlot is not None:
+                    self.plotArea.removeItem(currentPlot)
+                self.plotArea.addItem(self.spectGraph, row=0, col=1)
+
 
     def updateSettings(self):
         # minor versions update in place or set compatible default values at first update
