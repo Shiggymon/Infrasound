@@ -38,14 +38,14 @@ class MainWindow(QtWidgets.QMainWindow):
         self.resize(size)
         self.settings = QSettings(QSettings.Format.IniFormat, QSettings.Scope.UserScope, "shiggytech", "infrasound")
         self.settings.setFallbacksEnabled(False)
-        if self.settings.value("Settings/Version", 0.0, float) != 0.2:
+        if self.settings.value("Settings/Version", 0.0, float) != 0.3:
             self.updateSettings()
         self.xs = [0] # sample in time
         self.ys = [0] # measured value in Pa
         self.F = float(self.settings.value("Data/Samplerate", 50)) # Samplerate F
         self.N = int(self.settings.value("Data/SamplesBuffered", 500)) # number of samples retained in buffer
         self.useSPL = self.settings.value("Display/Unit", "dbSPL") == "dbSPL" # Output fft data in dBSPL instead of Pa
-        self.fPlotType = 'spectogram' # fft, spectogram
+        self.fPlotType = self.settings.value("Display/AnalysisView", 'fft') # fft, spectogram
         self.fftYLimitAuto = self.settings.value("Display/FftYLimit", "auto").lower() == "auto" # calculate upper limit from current values
         self.fftYLimit = 90 if self.fftYLimitAuto else float(self.settings.value("Display/FftYLimit",90)) # upper limit of the fft y axis
         self.fftRange = ["min", "max"]
@@ -56,8 +56,9 @@ class MainWindow(QtWidgets.QMainWindow):
         else:
             self.fftMaxRange = [x if x == "min" or x == "max" else float(x) if self._isFloat(x) else "min" if i == 0 else "max" for i, x in enumerate(self.fftMaxRange[0:2])] # limit list to the first 2 values. Use them if they are min, max or float. Otherwise set min if first value or max if second value. 
         self.volumeRange = [round(max(0, self.N-0.3*self.F)), "max"]
-        self.spectFreqResolution = 0.1
-        self.spectTimeResolution = 1
+        self.spectFreqResolution = np.clip(self.settings.value("Analysis/SpectrumFrequencyResolution", 0.1, float), 0.1, self.F/2)
+        self.spectTimeResolution = np.clip(self.settings.value("Analysis/SpectrumTimeResolution", 1, float), 1/self.F, 60)
+        self.spectColorMapName = self.settings.value("Analysis/SpectrumColorMap", "plasma")
         self.captureActive = False # Is the input port active
         self.capturePaused = False # Is the receiving of data paused
         self.serialPorts = list()
@@ -392,7 +393,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.fftGraph.getAxis("left").setLabel("Pressure ", units="Pa")
         self.spectGraph.setLabel("bottom", "Time", units="s")
         self.spectGraph.setLabel("left", "Frequency", units="Hz")
-        self.spectColorBar.setColorMap(pg.colormap.get(name="plasma"))
+        self.spectColorBar.setColorMap(pg.colormap.get(name=self.spectColorMapName))
         self.spectColorBar.setLabel("top", "dbₛₚₗ")        
         self.spectColorBar.setImageItem(self.spectImg)
         
@@ -884,7 +885,11 @@ class MainWindow(QtWidgets.QMainWindow):
         if self.settings.value("Settings/Version", 0.0, float) < 0.1:
             self.settings.setValue("Settings/Version", 0.1)
         if self.settings.value("Settings/Version", 0.0, float) < 0.2:
-            self.settings.setValue("Settings/Version", 0.2)  
+            self.settings.setValue("Settings/Version", 0.2)
+        if self.settings.value("Settings/Version", 0.0, float) < 0.3:
+            self.settings.setValue("Display/AnalysisView", 'fft')
+            self.settings.setValue("Analysis/SpectrumColorMap", "plasma")
+            self.settings.setValue("Settings/Version", 0.3)
     
     def _isFloat(self, value):
         try:
