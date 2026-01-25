@@ -1,5 +1,5 @@
 from PyQt6 import QtCore, QtWidgets
-from PyQt6.QtWidgets import QApplication, QPushButton, QVBoxLayout, QWidget, QHBoxLayout, QGridLayout, QLabel, QComboBox, QDoubleSpinBox, QFrame, QGroupBox, QRadioButton, QFileDialog, QCheckBox, QMessageBox, QButtonGroup
+from PyQt6.QtWidgets import QApplication, QPushButton, QVBoxLayout, QWidget, QHBoxLayout, QGridLayout, QLabel, QComboBox, QDoubleSpinBox, QFrame, QGroupBox, QRadioButton, QFileDialog, QCheckBox, QMessageBox, QButtonGroup, QLayout
 from PyQt6.QtCore import QTimer, QSettings, QSize, QRegularExpression
 from PyQt6.QtGui import QImage, QGuiApplication, QRegularExpressionValidator, QValidator, QTransform
 from multiprocessing import Queue, connection
@@ -113,6 +113,7 @@ class MainWindow(QtWidgets.QMainWindow):
         buttonExportPng = QPushButton("Save (Image)")
         buttonExportCsv = QPushButton("Save (Text)")
         buttonExportWav = QPushButton("Save (Audio)")
+        self.fftYLimitContainer = QWidget()
         fftYLimitLayout = QHBoxLayout()
         self.spinFftYLimit = QDoubleSpinBox()
         cbFftYLimitAuto = QCheckBox("auto")
@@ -331,14 +332,15 @@ class MainWindow(QtWidgets.QMainWindow):
         viewRightLayout.addWidget(self.buttonViewFft)
         viewRightLayout.addWidget(self.buttonViewSpect)
         groupBoxViewRight.setLayout(viewRightLayout)
+        self.fftYLimitContainer.setLayout(fftYLimitLayout)
         fftYLimitLayout.addWidget(QLabel("FFT y-limit: "))
         fftYLimitLayout.addWidget(self.spinFftYLimit)
         fftYLimitLayout.addWidget(cbFftYLimitAuto)
         self.settingsLayout.addWidget(groupBoxViewRight,1,7, 2, 1)
-        self.settingsLayout.addLayout(fftYLimitLayout,3,7)
-        self.settingsLayout.addWidget(buttonExportPng,4,7)
-        self.settingsLayout.addWidget(buttonExportCsv,5,7)
-        self.settingsLayout.addWidget(buttonExportWav,6,7)
+        self.settingsLayout.addWidget(self.fftYLimitContainer,3,7)
+        self.settingsLayout.addWidget(buttonExportPng,5,7)
+        self.settingsLayout.addWidget(buttonExportCsv,6,7)
+        self.settingsLayout.addWidget(buttonExportWav,7,7)
         self.buttonViewFft.clicked.connect(lambda :self.switchView("fft"))
         self.buttonViewFft.setCheckable(True)
         self.buttonViewSpect.clicked.connect(lambda :self.switchView("spectogram"))
@@ -347,6 +349,9 @@ class MainWindow(QtWidgets.QMainWindow):
         buttonExportCsv.clicked.connect(lambda :self.exportData(csv=True))
         buttonExportWav.clicked.connect(lambda :self.exportData(wav=True))
         
+        self.fftYLimitContainer.setContentsMargins(0, 0, 0, 0)
+        fftYLimitLayout.setContentsMargins(0, 0, 0, 0)
+        fftYLimitLayout.setSpacing(0)
         self.spinFftYLimit.setMinimum(0)
         self.spinFftYLimit.setMaximum(122)
         self.spinFftYLimit.setValue(self.fftYLimit)
@@ -854,15 +859,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 if currentPlot is not None:
                     self.plotArea.removeItem(currentPlot)
                 self.plotArea.addItem(self.fftGraph, row=0, col=1)
-            item = self.settingsLayout.itemAtPosition(3,  5)
-            if item is not self.groupBoxFftMaxRange:
-                if item is not None:
-                    widget = item.widget()
-                    if widget is not None and widget is not self.groupBoxFftMaxRange:
-                        self.settingsLayout.removeWidget(widget)
-                        widget.setParent(None)
-                self.settingsLayout.addWidget(self.groupBoxFftMaxRange, 3, 5, 2, 1)
-                self.groupBoxFftMaxRange.setEnabled(True)
+            self.replaceItemAtPosition(layout=self.settingsLayout, rootPosition=(3, 5), newItem=self.groupBoxFftMaxRange, itemSize=(2,1), enableNewItem=True)
+            self.replaceItemAtPosition(layout=self.settingsLayout, rootPosition=(3, 7), newItem=self.fftYLimitContainer)
         elif view.lower() == "spectogram":
             self.fPlotType = "spectogram"
             self.buttonViewSpect.setChecked(True)
@@ -870,15 +868,35 @@ class MainWindow(QtWidgets.QMainWindow):
                 if currentPlot is not None:
                     self.plotArea.removeItem(currentPlot)
                 self.plotArea.addItem(self.spectContainer, row=0, col=1)
-            item = self.settingsLayout.itemAtPosition(3,  5)
-            if item is not self.groupBoxSpectResolution:
-                if item is not None:
+            self.replaceItemAtPosition(layout=self.settingsLayout, rootPosition=(3, 5), newItem=self.groupBoxSpectResolution, itemSize=(2,1), enableNewItem=True)
+            self.replaceItemAtPosition(layout=self.settingsLayout, rootPosition=(3, 7), newItem=None, disableIfNone=False)
+    
+    def replaceItemAtPosition(self, layout: QGridLayout, rootPosition: tuple|list, newItem: QWidget|QLayout|None, itemSize:tuple|list=(1,1), enableNewItem:bool|None = None, disableIfNone:bool = True):
+        item = layout.itemAtPosition(rootPosition[0],  rootPosition[1])
+        if newItem is None and disableIfNone:
+            item.setEnabled(False)
+        else:
+            widget = None
+            if item is not None:
+                if isinstance(item, QtWidgets.QLayoutItem):
                     widget = item.widget()
-                    if widget is not None and widget is not self.groupBoxSpectResolution:
-                        self.settingsLayout.removeWidget(widget)
-                        widget.setParent(None)
-                self.settingsLayout.addWidget(self.groupBoxSpectResolution, 3, 5, 2, 1)
-                self.groupBoxSpectResolution.setEnabled(True)
+                elif item.isWidgetType():
+                    widget = item
+                else:
+                    widget = item.widget()
+            if (widget is not newItem and item is not newItem) or newItem is None:
+                if widget is not None:
+                    layout.removeWidget(widget)
+                    widget.setParent(None)
+                elif item is not None:
+                    layout.removeItem(item)
+                if newItem is not None:
+                    if newItem.isWidgetType():
+                        layout.addWidget(newItem, rootPosition[0], rootPosition[1], itemSize[0], itemSize[1])
+                    else:
+                        layout.addItem(newItem, rootPosition[0], rootPosition[1], itemSize[0], itemSize[1])
+                    if enableNewItem is not None:
+                        newItem.setEnabled(enableNewItem)
 
     def updateSettings(self):
         # minor versions update in place or set compatible default values at first update
