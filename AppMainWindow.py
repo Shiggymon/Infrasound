@@ -79,6 +79,7 @@ class MainWindow(QtWidgets.QMainWindow):
         settingsSeparator2 = QFrame()
         settingsSeparator3 = QFrame()
         self.plotArea = pg.GraphicsLayoutWidget()
+        self.analysisView = pg.GraphicsLayout()
         self.plotGraph = pg.PlotItem()
         self.fftGraph = pg.PlotItem()
         self.spectContainer = pg.GraphicsLayout()
@@ -138,9 +139,10 @@ class MainWindow(QtWidgets.QMainWindow):
         vLayout.addLayout(hTopLayout)
         hTopLayout.addWidget(self.plotArea)
         self.plotArea.addItem(self.plotGraph, row=0, col=0)
-        self.plotArea.addItem(self.fftGraph, row=0, col=1)
+        self.plotArea.addItem(self.analysisView, row=0, col=1)
         self.plotArea.ci.layout.setColumnStretchFactor(0, 1)
         self.plotArea.ci.layout.setColumnStretchFactor(1, 1)
+        self.analysisView.addItem(self.fftGraph)
         self.plotArea.setBackground("w")
         self.plotGraph.setMenuEnabled(False)
         self.plotGraph.setMouseEnabled(x=False, y=False)
@@ -152,13 +154,13 @@ class MainWindow(QtWidgets.QMainWindow):
         self.fftGraph.hideButtons()
         self.spectContainer.addItem(self.spectGraph,0, 0)
         self.spectContainer.addItem(self.spectColorBar,0, 1)
+        self.spectContainer.setContentsMargins(0, 0, 0, 0)
         self.spectGraph.addItem(self.spectImg)
         self.spectGraph.setMenuEnabled(False)
         self.spectGraph.setMouseEnabled(x=False, y=False)
         self.spectGraph.enableAutoRange(enable=False)
         self.spectGraph.hideButtons()
         self.spectColorBar.setMenuEnabled(False)
-
 
         # Set Bot Layout with a settings Grid
         vLayout.addLayout(self.settingsLayout)
@@ -910,19 +912,17 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.settings.setValue("Display/SpectrumRange", self.spectZRange)
                 self.spinSpectZLimitMin.setEnabled(True)
                 self.spinSpectZLimitMax.setEnabled(True)
-                
-        
-    
+                    
     def switchView(self, view):
         view = str(view)
-        currentPlot = self.plotArea.getItem(0, 1)
+        currentPlot = self.analysisView.getItem(0, 0)
         if view.lower() == "fft":
             self.fPlotType = "fft"
             self.buttonViewFft.setChecked(True)
             if currentPlot is not self.fftGraph:
                 if currentPlot is not None:
-                    self.plotArea.removeItem(currentPlot)
-                self.plotArea.addItem(self.fftGraph, row=0, col=1)
+                    self.analysisView.clear()
+                self.analysisView.addItem(self.fftGraph)
             self.replaceItemAtPosition(layout=self.settingsLayout, rootPosition=(3, 5), newItem=self.groupBoxFftMaxRange, itemSize=(2,1), enableNewItem=True)
             self.replaceItemAtPosition(layout=self.settingsLayout, rootPosition=(3, 7), newItem=self.fftYLimitContainer)
         elif view.lower() == "spectogram":
@@ -930,8 +930,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self.buttonViewSpect.setChecked(True)
             if currentPlot is not self.spectContainer:
                 if currentPlot is not None:
-                    self.plotArea.removeItem(currentPlot)
-                self.plotArea.addItem(self.spectContainer, row=0, col=1)
+                    self.analysisView.clear()
+                self.analysisView.addItem(self.spectContainer)
             self.replaceItemAtPosition(layout=self.settingsLayout, rootPosition=(3, 5), newItem=self.groupBoxSpectResolution, itemSize=(2,1), enableNewItem=True)
             self.replaceItemAtPosition(layout=self.settingsLayout, rootPosition=(3, 7), newItem=self.spectZLimitContainer, itemSize=(2,1), enableNewItem=True)
     
@@ -961,6 +961,15 @@ class MainWindow(QtWidgets.QMainWindow):
                         layout.addItem(newItem, rootPosition[0], rootPosition[1], itemSize[0], itemSize[1])
                     if enableNewItem is not None:
                         newItem.setEnabled(enableNewItem)
+                        
+    def resizeEvent(self, event):
+        plotAreaWidth = self.plotArea.width()
+        self.plotArea.ci.layout.setColumnFixedWidth(1, plotAreaWidth // 2)
+        super().resizeEvent(event)
+    
+    def showEvent(self, a0):
+        self.resizeEvent(None)
+        return super().showEvent(a0)
 
     def updateSettings(self):
         # minor versions update in place or set compatible default values at first update
