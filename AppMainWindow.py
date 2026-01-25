@@ -96,6 +96,10 @@ class MainWindow(QtWidgets.QMainWindow):
         fftMaxRangeLayout = QHBoxLayout()
         self.spinFftMaxStart = self.CustomDoubleSpinBox()
         self.spinFftMaxEnd = self.CustomDoubleSpinBox()
+        self.groupBoxSpectResolution = QGroupBox("Spectrum Analysis Resolution")
+        spectResolutionLayout = QHBoxLayout()
+        self.spinSpectResolutionFreq = QDoubleSpinBox()
+        self.spinSpectResolutionTime = QDoubleSpinBox()
         groupBoxVolumeTime = QGroupBox("Volume Range")
         volumeTimeLayout = QHBoxLayout()
         self.spinVolumeStartTime = self.CustomDoubleSpinBox()
@@ -248,9 +252,8 @@ class MainWindow(QtWidgets.QMainWindow):
         
         fftMaxRangeLayout.addWidget(self.spinFftMaxStart)
         fftMaxRangeLayout.addWidget(self.spinFftMaxEnd)
-
+        
         self.groupBoxFftMaxRange.setLayout(fftMaxRangeLayout)
-
         self.spinFftMaxStart.setMinimum(0)
         self.spinFftMaxStart.setMaximum(round(self.F/2, 2))
         self.spinFftMaxStart.setValue(self.fftMaxRange[0])
@@ -273,6 +276,33 @@ class MainWindow(QtWidgets.QMainWindow):
         self.spinFftMaxEnd.setAccelerated(True)
         self.spinFftMaxEnd.setKeyboardTracking(False)
         self.spinFftMaxEnd.valueChanged.connect(lambda f: self.setFftMaxRange(end=f))
+
+        spectResolutionLayout.addWidget(self.spinSpectResolutionFreq)
+        spectResolutionLayout.addWidget(self.spinSpectResolutionTime)
+        
+        self.groupBoxSpectResolution.setLayout(spectResolutionLayout)
+        self.spinSpectResolutionFreq.setMinimum(0.01)
+        self.spinSpectResolutionFreq.setMaximum(round(self.F/2, 2))
+        self.spinSpectResolutionFreq.setValue(self.spectFreqResolution)
+        self.spinSpectResolutionFreq.setSingleStep(0.01)
+        self.spinSpectResolutionFreq.setStepType(QDoubleSpinBox.StepType.DefaultStepType)
+        self.spinSpectResolutionFreq.setSuffix(" Hz")
+        self.spinSpectResolutionFreq.setToolTip("Frequency bin width for spectrum analysis")
+        self.spinSpectResolutionFreq.setCorrectionMode(QDoubleSpinBox.CorrectionMode.CorrectToNearestValue)
+        self.spinSpectResolutionFreq.setAccelerated(True)
+        self.spinSpectResolutionFreq.setKeyboardTracking(False)
+        self.spinSpectResolutionFreq.valueChanged.connect(lambda f: self.setSpectResolution(frequency=f))
+        self.spinSpectResolutionTime.setMinimum(1/self.F)
+        self.spinSpectResolutionTime.setMaximum(60)
+        self.spinSpectResolutionTime.setValue(self.spectTimeResolution)
+        self.spinSpectResolutionTime.setSingleStep(1/self.F)
+        self.spinSpectResolutionTime.setStepType(QDoubleSpinBox.StepType.DefaultStepType)
+        self.spinSpectResolutionTime.setSuffix(" s")
+        self.spinSpectResolutionTime.setToolTip("Time hop for spectrum analysis")
+        self.spinSpectResolutionTime.setCorrectionMode(QDoubleSpinBox.CorrectionMode.CorrectToNearestValue)
+        self.spinSpectResolutionTime.setAccelerated(True)
+        self.spinSpectResolutionTime.setKeyboardTracking(False)
+        self.spinSpectResolutionTime.valueChanged.connect(lambda f: self.setSpectResolution(time=f))
 
         volumeTimeLayout.addWidget(self.spinVolumeStartTime)
         groupBoxVolumeTime.setLayout(volumeTimeLayout)
@@ -618,7 +648,11 @@ class MainWindow(QtWidgets.QMainWindow):
         newFftMaxRangeStart = 0 if self.fftMaxRange[0] == "min" else self.F/2 if self.fftMaxRange[0] == "max" else self.fftMaxRange[0]
         newFftMaxRangeEnd = 0 if self.fftMaxRange[1] == "min" else self.F/2 if self.fftMaxRange[1] == "max" else self.fftMaxRange[1]
         self.spinFftMaxStart.setValue(newFftMaxRangeStart)
-        self.spinFftMaxEnd.setValue(newFftMaxRangeEnd)      
+        self.spinFftMaxEnd.setValue(newFftMaxRangeEnd)    
+        # update spect resolution Spinners
+        self.spinSpectResolutionFreq.setMaximum(self.F/2)
+        self.spinSpectResolutionTime.setMinimum(1/self.F)
+        self.spinSpectResolutionTime.setSingleStep(1/self.F)
 
     def setCaptureTime(self, captureTime):
         if captureTime > 0:
@@ -744,6 +778,14 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.fftMaxRange[1] = round(end, 2)
         self.settings.setValue("Analysis/FftMaxRange", self.fftMaxRange)
 
+    def setSpectResolution(self, frequency=None, time=None):
+        if frequency != None:
+            self.spectFreqResolution = round(frequency, 2)
+            self.settings.setValue("Analysis/SpectrumFrequencyResolution", self.spectFreqResolution)
+        if time != None:
+            self.spectTimeResolution = round(time, 2)
+            self.settings.setValue("Analysis/SpectrumTimeResolution", self.spectTimeResolution)
+
 
     def setVolumeRange(self, start=None, end=None):
         if start != None:
@@ -828,12 +870,14 @@ class MainWindow(QtWidgets.QMainWindow):
                     self.plotArea.removeItem(currentPlot)
                 self.plotArea.addItem(self.spectContainer, row=0, col=1)
             item = self.settingsLayout.itemAtPosition(3,  5)
-            if item is not None:
-                widget = item.widget()
-                if widget is not None:
-                    widget.setEnabled(False)
-                #     self.settingsLayout.removeWidget(widget)
-                #     widget.setParent(None)
+            if item is not self.groupBoxSpectResolution:
+                if item is not None:
+                    widget = item.widget()
+                    if widget is not None and widget is not self.groupBoxSpectResolution:
+                        self.settingsLayout.removeWidget(widget)
+                        widget.setParent(None)
+                self.settingsLayout.addWidget(self.groupBoxSpectResolution, 3, 5, 2, 1)
+                self.groupBoxSpectResolution.setEnabled(True)
 
     def updateSettings(self):
         # minor versions update in place or set compatible default values at first update
