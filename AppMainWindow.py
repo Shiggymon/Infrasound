@@ -38,7 +38,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.resize(size)
         self.settings = QSettings(QSettings.Format.IniFormat, QSettings.Scope.UserScope, "shiggytech", "infrasound")
         self.settings.setFallbacksEnabled(False)
-        if self.settings.value("Settings/Version", 0.0, float) != 0.3:
+        if self.settings.value("Settings/Version", 0.0, float) != 0.4:
             self.updateSettings()
         self.xs = [0] # sample in time
         self.ys = [0] # measured value in Pa
@@ -58,7 +58,15 @@ class MainWindow(QtWidgets.QMainWindow):
         self.volumeRange = [round(max(0, self.N-0.3*self.F)), "max"]
         self.spectFreqResolution = np.clip(self.settings.value("Analysis/SpectrumFrequencyResolution", 0.1, float), 0.1, self.F/2)
         self.spectTimeResolution = np.clip(self.settings.value("Analysis/SpectrumTimeResolution", 1, float), 1/self.F, 60)
-        self.spectColorMapName = self.settings.value("Analysis/SpectrumColorMap", "plasma")
+        self.spectColorMapName = self.settings.value("Display/SpectrumColorMap", "plasma")
+        self.spectZRangeAuto = "auto" in self.settings.value("Display/SpectrumRange", "auto", str).lower()
+        self.spectZRange = self.settings.value("Display/SpectrumRange", [-30, 40], list)
+        if len(self.spectZRange) < 2:
+            self.spectZRange = [-30, 40]
+            if not self.spectZRangeAuto:
+                self.settings.setValue("Display/SpectrumRange", self.spectZRange)
+        else:
+            self.spectZRange = [float(x) if self._isFloat(x) else -30 if i == 0 else 40 for i, x in enumerate(self.spectZRange[0:2])] # limit list to the first 2 values. Use them if they are float. Otherwise set -30 if first value or 40 if second value. 
         self.captureActive = False # Is the input port active
         self.capturePaused = False # Is the receiving of data paused
         self.serialPorts = list()
@@ -108,15 +116,20 @@ class MainWindow(QtWidgets.QMainWindow):
         buttonGroupViewRight = QButtonGroup(self)
         viewRightLayout = QHBoxLayout()
         self.buttonViewFft = QPushButton("FFT")
-        self.buttonViewSpect = QPushButton("Spectogram")
-        
-        buttonExportPng = QPushButton("Save (Image)")
-        buttonExportCsv = QPushButton("Save (Text)")
-        buttonExportWav = QPushButton("Save (Audio)")
+        self.buttonViewSpect = QPushButton("Spectogram")        
         self.fftYLimitContainer = QWidget()
         fftYLimitLayout = QHBoxLayout()
         self.spinFftYLimit = QDoubleSpinBox()
         cbFftYLimitAuto = QCheckBox("auto")
+        self.spectZLimitContainer = QGroupBox("Spectrum color limits")
+        spectZLimitLayout = QHBoxLayout()
+        self.spinSpectZLimitMax = QDoubleSpinBox()
+        self.spinSpectZLimitMin = QDoubleSpinBox()
+        cbSpectZLimitAuto = QCheckBox("auto")
+        
+        buttonExportPng = QPushButton("Save (Image)")
+        buttonExportCsv = QPushButton("Save (Text)")
+        buttonExportWav = QPushButton("Save (Audio)")
         
 
 
@@ -336,6 +349,11 @@ class MainWindow(QtWidgets.QMainWindow):
         fftYLimitLayout.addWidget(QLabel("FFT y-limit: "))
         fftYLimitLayout.addWidget(self.spinFftYLimit)
         fftYLimitLayout.addWidget(cbFftYLimitAuto)
+        self.spectZLimitContainer.setLayout(spectZLimitLayout)
+        spectZLimitLayout.addWidget(self.spinSpectZLimitMin)
+        spectZLimitLayout.addWidget(self.spinSpectZLimitMax)
+        spectZLimitLayout.addWidget(cbSpectZLimitAuto)
+        
         self.settingsLayout.addWidget(groupBoxViewRight,1,7, 2, 1)
         self.settingsLayout.addWidget(self.fftYLimitContainer,3,7)
         self.settingsLayout.addWidget(buttonExportPng,5,7)
@@ -362,10 +380,37 @@ class MainWindow(QtWidgets.QMainWindow):
         self.spinFftYLimit.setCorrectionMode(QDoubleSpinBox.CorrectionMode.CorrectToNearestValue)
         self.spinFftYLimit.setAccelerated(True)
         self.spinFftYLimit.setKeyboardTracking(False)
-        self.spinFftYLimit.setEnabled(False)
+        self.spinFftYLimit.setDisabled(self.fftYLimitAuto)
         self.spinFftYLimit.valueChanged.connect(self.setFftYLimit)
-        cbFftYLimitAuto.setChecked(True)
+        cbFftYLimitAuto.setChecked(self.fftYLimitAuto)
         cbFftYLimitAuto.clicked.connect(self.setFftYLimitAuto)
+
+        self.spinSpectZLimitMin.setMinimum(-120)
+        self.spinSpectZLimitMin.setMaximum(140)
+        self.spinSpectZLimitMin.setValue(self.spectZRange[0])
+        self.spinSpectZLimitMin.setSingleStep(1.0)
+        self.spinSpectZLimitMin.setStepType(QDoubleSpinBox.StepType.DefaultStepType)
+        self.spinSpectZLimitMin.setSuffix(" dbₛₚₗ")
+        self.spinSpectZLimitMin.setToolTip("Upper limit for the spectrum color axis in dbₛₚₗ")
+        self.spinSpectZLimitMin.setCorrectionMode(QDoubleSpinBox.CorrectionMode.CorrectToNearestValue)
+        self.spinSpectZLimitMin.setAccelerated(True)
+        self.spinSpectZLimitMin.setKeyboardTracking(False)
+        self.spinSpectZLimitMin.setDisabled(self.spectZRangeAuto)
+        self.spinSpectZLimitMin.valueChanged.connect(lambda t: self.setSpectZRange(lower=t))
+        self.spinSpectZLimitMax.setMinimum(-120)
+        self.spinSpectZLimitMax.setMaximum(140)
+        self.spinSpectZLimitMax.setValue(self.spectZRange[1])
+        self.spinSpectZLimitMax.setSingleStep(1.0)
+        self.spinSpectZLimitMax.setStepType(QDoubleSpinBox.StepType.DefaultStepType)
+        self.spinSpectZLimitMax.setSuffix(" dbₛₚₗ")
+        self.spinSpectZLimitMax.setToolTip("Upper limit for the spectrum color axis in dbₛₚₗ")
+        self.spinSpectZLimitMax.setCorrectionMode(QDoubleSpinBox.CorrectionMode.CorrectToNearestValue)
+        self.spinSpectZLimitMax.setAccelerated(True)
+        self.spinSpectZLimitMax.setKeyboardTracking(False)
+        self.spinSpectZLimitMax.setDisabled(self.spectZRangeAuto)
+        self.spinSpectZLimitMax.valueChanged.connect(lambda t: self.setSpectZRange(upper=t))
+        cbSpectZLimitAuto.setChecked(self.spectZRangeAuto)
+        cbSpectZLimitAuto.clicked.connect(lambda t: self.setSpectZRange(autoRange=t))
         
         # Add Layout to Main Window
         mainWidget.setLayout(vLayout)
@@ -552,10 +597,10 @@ class MainWindow(QtWidgets.QMainWindow):
                     tr.scale(dt, df)
                     self.spectImg.setTransform(tr)
                     zRange = [x if np.isfinite(x) else -20 if i == 0 else 120 for i, x in enumerate(zRange)]
-                    if self.fftYLimitAuto:
+                    if self.spectZRangeAuto:
                         pass
                     else:
-                        zRange = [-30 if self.useSPL else 0, self.fftYLimit]
+                        zRange = self.spectZRange
                     self.spectImg.setLevels(zRange)
                     self.spectColorBar.setLevels(zRange)
                     self.spectGraph.setYRange(min=0, max=self.F/2, padding=0)
@@ -848,6 +893,25 @@ class MainWindow(QtWidgets.QMainWindow):
             self.fftYLimitAuto = False
             self.settings.setValue("Display/FftYLimit", self.fftYLimit)
             self.spinFftYLimit.setEnabled(True)
+
+    def setSpectZRange(self, lower=None, upper=None, autoRange=None):
+        if lower is not None or upper is not None:
+            # if self.useSPL:
+            self.spectZRange = [lower if lower is not None else self.spectZRange[0], upper if upper is not None else self.spectZRange[1]]
+            self.settings.setValue("Display/SpectrumRange", self.spectZRange)
+        if autoRange is not None:
+            if autoRange:
+                self.spectZRangeAuto = True
+                self.settings.setValue("Display/SpectrumRange", "auto")
+                self.spinSpectZLimitMin.setEnabled(False)
+                self.spinSpectZLimitMax.setEnabled(False)
+            else:
+                self.spectZRangeAuto = False
+                self.settings.setValue("Display/SpectrumRange", self.spectZRange)
+                self.spinSpectZLimitMin.setEnabled(True)
+                self.spinSpectZLimitMax.setEnabled(True)
+                
+        
     
     def switchView(self, view):
         view = str(view)
@@ -869,7 +933,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     self.plotArea.removeItem(currentPlot)
                 self.plotArea.addItem(self.spectContainer, row=0, col=1)
             self.replaceItemAtPosition(layout=self.settingsLayout, rootPosition=(3, 5), newItem=self.groupBoxSpectResolution, itemSize=(2,1), enableNewItem=True)
-            self.replaceItemAtPosition(layout=self.settingsLayout, rootPosition=(3, 7), newItem=None, disableIfNone=False)
+            self.replaceItemAtPosition(layout=self.settingsLayout, rootPosition=(3, 7), newItem=self.spectZLimitContainer, itemSize=(2,1), enableNewItem=True)
     
     def replaceItemAtPosition(self, layout: QGridLayout, rootPosition: tuple|list, newItem: QWidget|QLayout|None, itemSize:tuple|list=(1,1), enableNewItem:bool|None = None, disableIfNone:bool = True):
         item = layout.itemAtPosition(rootPosition[0],  rootPosition[1])
@@ -908,6 +972,11 @@ class MainWindow(QtWidgets.QMainWindow):
             self.settings.setValue("Display/AnalysisView", 'fft')
             self.settings.setValue("Analysis/SpectrumColorMap", "plasma")
             self.settings.setValue("Settings/Version", 0.3)
+        if self.settings.value("Settings/Version", 0.0, float) < 0.4:
+            self.settings.setValue("Display/SpectrumColorMap", self.settings.value("Analysis/SpectrumColorMap", "plasma"))
+            self.settings.setValue("Display/SpectrumRange", "auto")
+            self.settings.setValue("Settings/Version", 0.4)
+        self.settings.sync()
     
     def _isFloat(self, value):
         try:
