@@ -15,6 +15,7 @@ from enum import Enum, auto
 from typing import NamedTuple, Tuple
 from datetime import datetime
 import math
+from SaveWindow import SaveWindow
 
 class MsgType(Enum):
     STARTSERIAL = auto()
@@ -128,10 +129,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.spinSpectZLimitMin = QDoubleSpinBox()
         cbSpectZLimitAuto = QCheckBox("auto")
         
-        buttonExportPng = QPushButton("Save (Image)")
-        buttonExportCsv = QPushButton("Save (Text)")
-        buttonExportWav = QPushButton("Save (Audio)")
-        
+        # buttonExportPng = QPushButton("Save (Image)")
+        # buttonExportCsv = QPushButton("Save (Text)")
+        # buttonExportWav = QPushButton("Save (Audio)")
+        buttonExport = QPushButton("Export Data")        
 
 
 
@@ -358,16 +359,18 @@ class MainWindow(QtWidgets.QMainWindow):
         
         self.settingsLayout.addWidget(groupBoxViewRight,1,7, 2, 1)
         self.settingsLayout.addWidget(self.fftYLimitContainer,3,7)
-        self.settingsLayout.addWidget(buttonExportPng,5,7)
-        self.settingsLayout.addWidget(buttonExportCsv,6,7)
-        self.settingsLayout.addWidget(buttonExportWav,7,7)
+        # self.settingsLayout.addWidget(buttonExportPng,5,7)
+        # self.settingsLayout.addWidget(buttonExportCsv,6,7)
+        # self.settingsLayout.addWidget(buttonExportWav,7,7)
+        self.settingsLayout.addWidget(buttonExport,6,7)
         self.buttonViewFft.clicked.connect(lambda :self.switchView("fft"))
         self.buttonViewFft.setCheckable(True)
         self.buttonViewSpect.clicked.connect(lambda :self.switchView("spectogram"))
         self.buttonViewSpect.setCheckable(True)
-        buttonExportPng.clicked.connect(lambda :self.exportData(png=True))
-        buttonExportCsv.clicked.connect(lambda :self.exportData(csv=True))
-        buttonExportWav.clicked.connect(lambda :self.exportData(wav=True))
+        # buttonExportPng.clicked.connect(lambda :self.exportData(png=True))
+        # buttonExportCsv.clicked.connect(lambda :self.exportData(csv=True))
+        # buttonExportWav.clicked.connect(lambda :self.exportData(wav=True))
+        buttonExport.clicked.connect(lambda : self.exportData())
         
         self.fftYLimitContainer.setContentsMargins(0, 0, 0, 0)
         fftYLimitLayout.setContentsMargins(0, 0, 0, 0)
@@ -747,29 +750,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.spinFftEndTime.setValue(newFftEndValue)
         self.spinVolumeStartTime.setValue(newVolumeStartValue)
     
-    def exportData(self, png=False, csv=False, wav=False):
-        defaultName = datetime.now().strftime("%Y-%m-%d-%H%M%S")
-        if png:
-            pngExporter = pyqtgraph.exporters.ImageExporter(self.plotArea.scene())
-            targetPath, _ = QFileDialog.getSaveFileName(caption="Save Image", directory=defaultName+".png", filter="Images (*.png *.jpg)")
-            if targetPath:
-                img =  QImage(pngExporter.export(toBytes=True))
-                img.save(targetPath)
-        if csv:
-            targetPath, _ = QFileDialog.getSaveFileName(caption="Save Text", directory=defaultName+".csv", filter="Text (*.csv *.txt)")
-            if targetPath:
-                xs = np.array(self.xs)/self.F
-                ys = np.array(self.ys)
-                data = np.transpose((xs, ys))
-                hdrString = "Data Recorded and exported with Shiggytech's Infrasound. For More information visit ..."
-                np.savetxt(fname=targetPath, X=data, fmt=("%g", "%.5g"), delimiter=";", header=hdrString)
-        if wav:
-            targetPath, _ = QFileDialog.getSaveFileName(caption="Save Audio", directory=defaultName+".wav", filter="Audio (*.wav)")
-            if targetPath:
-                ys = np.array(self.ys)
-                scalingFactor = np.iinfo(np.int16).max/np.max(ys)
-                data = ys*scalingFactor
-                wavfile.write(targetPath, round(self.F*128), data.astype(np.int16))
+    def exportData(self):
+        saveWindow = SaveWindow(xData=self.xs, yData=self.ys, exportArea=self.plotArea, sampleRate=self.F)
+        saveWindow.exec()
 
     def updateCaptureInfo(self):
         N = len(self.ys)
