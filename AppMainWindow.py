@@ -71,6 +71,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.capturePaused = False # Is the receiving of data paused
         self.serialPorts = list()
         self.setWindowTitle("Infrasound Analysis")
+        pg.setConfigOption('background', 'w')
+        pg.setConfigOption('foreground', pg.Color(10,10,10))
         mainWidget = QWidget()
         vLayout = QVBoxLayout()
         hTopLayout = QHBoxLayout()
