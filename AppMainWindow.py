@@ -45,7 +45,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.F = float(self.settings.value("Data/Samplerate", 50)) # Samplerate F
         self.N = int(self.settings.value("Data/SamplesBuffered", 500)) # number of samples retained in buffer
         self.useSPL = self.settings.value("Display/Unit", "dbSPL") == "dbSPL" # Output fft data in dBSPL instead of Pa
-        self.fPlotType = self.settings.value("Display/AnalysisView", 'fft') # fft, spectogram
+        self.fPlotType = self.settings.value("Display/AnalysisView", 'fft') # fft, spectogram, waterfall
         self.fftYLimitAuto = self.settings.value("Display/FftYLimit", "auto").lower() == "auto" # calculate upper limit from current values
         self.fftYLimit = 90 if self.fftYLimitAuto else float(self.settings.value("Display/FftYLimit",90)) # upper limit of the fft y axis
         self.fftRange = ["min", "max"]
@@ -86,6 +86,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.spectGraph = pg.PlotItem()
         self.spectImg = pg.ImageItem()
         self.spectColorBar = pg.ColorBarItem(interactive=False)
+        self.waterfallGraph = pg.PlotItem()
         buttonReloadSerial = QPushButton("Reload")
         self.comboSelectSerial = QComboBox()
         self.buttonStartCapture = QPushButton("Start")
@@ -117,7 +118,8 @@ class MainWindow(QtWidgets.QMainWindow):
         buttonGroupViewRight = QButtonGroup(self)
         viewRightLayout = QHBoxLayout()
         self.buttonViewFft = QPushButton("FFT")
-        self.buttonViewSpect = QPushButton("Spectogram")        
+        self.buttonViewSpect = QPushButton("Spectogram")
+        self.buttonViewWaterfall = QPushButton("Waterfall")
         self.fftYLimitContainer = QWidget()
         fftYLimitLayout = QHBoxLayout()
         self.spinFftYLimit = QDoubleSpinBox()
@@ -161,6 +163,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.spectGraph.enableAutoRange(enable=False)
         self.spectGraph.hideButtons()
         self.spectColorBar.setMenuEnabled(False)
+        self.waterfallGraph.setMenuEnabled(False)
+        self.waterfallGraph.setMouseEnabled(x=False, y=False)
+        self.waterfallGraph.enableAutoRange(enable=False)
+        self.waterfallGraph.hideButtons()
+        
 
         # Set Bot Layout with a settings Grid
         vLayout.addLayout(self.settingsLayout)
@@ -337,15 +344,15 @@ class MainWindow(QtWidgets.QMainWindow):
         self.spinVolumeStartTime.valueChanged.connect(lambda t: self.setVolumeRange(start=t))
 
         # Settings Column 7: Saving Data
-        self.buttonViewFft = QPushButton("FFT")
-        self.buttonViewSpect = QPushButton("Spectogram")
         # settings column for exporting data 
         self.settingsLayout.addWidget(QLabel("Display and Data Saving"),0,7)
         buttonGroupViewRight.addButton(self.buttonViewFft)
         buttonGroupViewRight.addButton(self.buttonViewSpect)
+        buttonGroupViewRight.addButton(self.buttonViewWaterfall)
         buttonGroupViewRight.setExclusive(True)
         viewRightLayout.addWidget(self.buttonViewFft)
         viewRightLayout.addWidget(self.buttonViewSpect)
+        viewRightLayout.addWidget(self.buttonViewWaterfall)
         groupBoxViewRight.setLayout(viewRightLayout)
         self.fftYLimitContainer.setLayout(fftYLimitLayout)
         fftYLimitLayout.addWidget(QLabel("FFT y-limit: "))
@@ -365,6 +372,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.buttonViewFft.setCheckable(True)
         self.buttonViewSpect.clicked.connect(lambda :self.switchView("spectogram"))
         self.buttonViewSpect.setCheckable(True)
+        self.buttonViewWaterfall.clicked.connect(lambda :self.switchView("waterfall"))
+        self.buttonViewWaterfall.setCheckable(True)
         buttonExportPng.clicked.connect(lambda :self.exportData(png=True))
         buttonExportCsv.clicked.connect(lambda :self.exportData(csv=True))
         buttonExportWav.clicked.connect(lambda :self.exportData(wav=True))
@@ -418,8 +427,10 @@ class MainWindow(QtWidgets.QMainWindow):
         mainWidget.setLayout(vLayout)
         self.setCentralWidget(mainWidget)
         
+        
         # draw the initial plots
         plotPen = pg.mkPen(color=(10, 10, 10), width=2)
+        plotPenWaterfall = pg.mkPen(color=(10, 10, 10), width=1.1)
         fftBorderPen = pg.mkPen(color=(240, 10, 10), width = 3, style=QtCore.Qt.PenStyle.DashLine)
         fftMaxBorderPen = pg.mkPen(color=(240, 10, 10, 128), width = 3, style=QtCore.Qt.PenStyle.DashLine) # Pen to style the lines showing the fft maximum search range
         volumeBorderPen = pg.mkPen(color=(10, 10, 240), width = 3, style=QtCore.Qt.PenStyle.DashLine)
@@ -449,7 +460,13 @@ class MainWindow(QtWidgets.QMainWindow):
         self.spectColorBar.setLabel("top", "dbₛₚₗ")        
         self.spectColorBar.setImageItem(self.spectImg)
         
-        # self.spectImg.setLookupTable(self.spectColors.getLookupTable())
+        # self.waterfallGraph.addLegend(offset=(-2, 2), pen=plotPen, brush=pg.mkBrush(color=(255, 255, 255, 210)), labelTextColor=plotPen.color())
+        self.waterfallPlots = list()
+        for i in range(0,101):
+            self.waterfallPlots.append(self.waterfallGraph.plot([], pen=plotPenWaterfall))
+        self.waterfallGraph.getAxis("bottom").setLabel("Time ", units="s")
+        self.waterfallGraph.setLabel("left", "Frequency", units="Hz")
+        
         self.q = q
         self.displayPipe = p
         
@@ -574,10 +591,10 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.lineF.setData([], [])
                 self.lineFMax.setData([], [])
                 self.fftGraph.addLegend().getLabel(self.lineFMax).setText("no Data!")
-        else:
+        elif self.fPlotType == "spectogram":
             # spectogram visualization
             if N > 1:
-                winLength = round(self.F/self.spectFreqResolution)
+                winLength = round(self.F/self.spectFreqResolution)*2
                 if N >= winLength/2:
                     win = windows.gaussian(winLength, std=winLength*0.3, sym=True)
                     sft = ShortTimeFFT(win=win, hop=round(self.spectTimeResolution*self.F), fs=self.F, fft_mode="onesided", scale_to="psd")
@@ -595,7 +612,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     freqs = sft.extent(N)[2:]
                     dt = (times[1] - times[0])/spect.shape[1]
                     df = (freqs[1] - freqs[0])/spect.shape[0]
-                    tr.translate((times[0]+self.xs[0]/self.F), freqs[0])
+                    tr.translate((times[0]+self.xs[fftStart]/self.F), freqs[0])
                     tr.scale(dt, df)
                     self.spectImg.setTransform(tr)
                     zRange = [x if np.isfinite(x) else -20 if i == 0 else 120 for i, x in enumerate(zRange)]
@@ -606,7 +623,41 @@ class MainWindow(QtWidgets.QMainWindow):
                     self.spectImg.setLevels(zRange)
                     self.spectColorBar.setLevels(zRange)
                     self.spectGraph.setYRange(min=0, max=self.F/2, padding=0)
-                    self.spectGraph.setXRange(min=times[0]+self.xs[0]/self.F, max=times[1]+self.xs[0]/self.F, padding=0)
+                    self.spectGraph.setXRange(min=times[0]+self.xs[fftStart]/self.F, max=times[1]+self.xs[fftStart]/self.F, padding=0)
+                else:
+                    self.spectImg.clear()
+        elif self.fPlotType == "waterfall":
+            # waterfall visualization
+            if N > 1:
+                winLength = round(self.F/self.spectFreqResolution)*2
+                winLength = min(winLength, 200) # limit winlength to 200 resulting in 100 lines for clarity
+                waterfallDistance = self.F/winLength
+                if N >= winLength/2:
+                    win = windows.gaussian(winLength, std=winLength*0.3, sym=True)
+                    hop = round(self.spectTimeResolution*self.F)
+                    sft = ShortTimeFFT(win=win, hop=hop, fs=self.F, fft_mode="onesided", scale_to="psd")
+                    spect = sft.spectrogram(ys, detr=None, padding="zeros")
+                    zRange = [0, 0]
+                    times = sft.extent(N)[:2]
+                    freqs = sft.extent(N)[2:]
+                    xs = np.arange(spect.shape[1])*(hop/self.F)+self.xs[fftStart]/self.F
+                    if self.useSPL:
+                        logSpect = self.lin2dbSPL(spect.T)
+                        spectRange = [np.min(logSpect), np.max(logSpect)]
+                        for i,x in enumerate(logSpect.T):
+                            scaledLine = (x-np.mean(x))/(spectRange[1]-spectRange[0])*waterfallDistance*1.1
+                            self.waterfallPlots[i].setData(xs, scaledLine+i*waterfallDistance)
+                        for i in range(i+1,len(self.waterfallPlots)):
+                            self.waterfallPlots[i].setData([])
+                            
+                            
+                        self.spectGraph.autoRange(padding=0.1)
+                    else:
+                        pass
+                        # self.spectImg.setImage(spect.T, autoLevels=False)
+                        # zRange = [np.nanmin(spect), np.nanmax(spect)]
+                    self.waterfallGraph.setYRange(min=-waterfallDistance, max=self.F/2+waterfallDistance, padding=0)
+                    self.waterfallGraph.setXRange(min=xs[0], max=xs[-1] , padding=0)
                     
                 else:
                     self.spectImg.clear()
@@ -924,7 +975,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     self.analysisView.clear()
                 self.analysisView.addItem(self.fftGraph)
             self.replaceItemAtPosition(layout=self.settingsLayout, rootPosition=(3, 5), newItem=self.groupBoxFftMaxRange, itemSize=(2,1), enableNewItem=True)
-            self.replaceItemAtPosition(layout=self.settingsLayout, rootPosition=(3, 7), newItem=self.fftYLimitContainer)
+            self.replaceItemAtPosition(layout=self.settingsLayout, rootPosition=(3, 7), newItem=self.fftYLimitContainer, enableNewItem=True)
         elif view.lower() == "spectogram":
             self.fPlotType = "spectogram"
             self.buttonViewSpect.setChecked(True)
@@ -934,20 +985,29 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.analysisView.addItem(self.spectContainer)
             self.replaceItemAtPosition(layout=self.settingsLayout, rootPosition=(3, 5), newItem=self.groupBoxSpectResolution, itemSize=(2,1), enableNewItem=True)
             self.replaceItemAtPosition(layout=self.settingsLayout, rootPosition=(3, 7), newItem=self.spectZLimitContainer, itemSize=(2,1), enableNewItem=True)
+        elif view.lower() == "waterfall":
+            self.fPlotType = "waterfall"
+            # self.buttonViewSpect.setChecked(True)
+            if currentPlot is not self.waterfallGraph:
+                if currentPlot is not None:
+                    self.analysisView.clear()
+                self.analysisView.addItem(self.waterfallGraph)
+            self.replaceItemAtPosition(layout=self.settingsLayout, rootPosition=(3, 5), newItem=self.groupBoxSpectResolution, itemSize=(2,1), enableNewItem=True)
+            self.replaceItemAtPosition(layout=self.settingsLayout, rootPosition=(3, 7), newItem=None, itemSize=(2,1))
     
     def replaceItemAtPosition(self, layout: QGridLayout, rootPosition: tuple|list, newItem: QWidget|QLayout|None, itemSize:tuple|list=(1,1), enableNewItem:bool|None = None, disableIfNone:bool = True):
         item = layout.itemAtPosition(rootPosition[0],  rootPosition[1])
+        widget = None
+        if item is not None:
+            if isinstance(item, QtWidgets.QLayoutItem):
+                widget = item.widget()
+            elif item.isWidgetType():
+                widget = item
+            else:
+                widget = item.widget()
         if newItem is None and disableIfNone:
-            item.setEnabled(False)
+            widget.setEnabled(False)
         else:
-            widget = None
-            if item is not None:
-                if isinstance(item, QtWidgets.QLayoutItem):
-                    widget = item.widget()
-                elif item.isWidgetType():
-                    widget = item
-                else:
-                    widget = item.widget()
             if (widget is not newItem and item is not newItem) or newItem is None:
                 if widget is not None:
                     layout.removeWidget(widget)
@@ -959,8 +1019,8 @@ class MainWindow(QtWidgets.QMainWindow):
                         layout.addWidget(newItem, rootPosition[0], rootPosition[1], itemSize[0], itemSize[1])
                     else:
                         layout.addItem(newItem, rootPosition[0], rootPosition[1], itemSize[0], itemSize[1])
-                    if enableNewItem is not None:
-                        newItem.setEnabled(enableNewItem)
+            if newItem is not None and enableNewItem is not None :
+                newItem.setEnabled(enableNewItem)
                         
     def resizeEvent(self, event):
         plotAreaWidth = self.plotArea.width()
