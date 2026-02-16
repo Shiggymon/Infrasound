@@ -344,8 +344,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self.spinVolumeStartTime.valueChanged.connect(lambda t: self.setVolumeRange(start=t))
 
         # Settings Column 7: Saving Data
-        # self.buttonViewFft = QPushButton("FFT")
-        # self.buttonViewSpect = QPushButton("Spectogram")
         # settings column for exporting data 
         self.settingsLayout.addWidget(QLabel("Display and Data Saving"),0,7)
         buttonGroupViewRight.addButton(self.buttonViewFft)
@@ -432,6 +430,7 @@ class MainWindow(QtWidgets.QMainWindow):
         
         # draw the initial plots
         plotPen = pg.mkPen(color=(10, 10, 10), width=2)
+        plotPenWaterfall = pg.mkPen(color=(10, 10, 10), width=1.1)
         fftBorderPen = pg.mkPen(color=(240, 10, 10), width = 3, style=QtCore.Qt.PenStyle.DashLine)
         fftMaxBorderPen = pg.mkPen(color=(240, 10, 10, 128), width = 3, style=QtCore.Qt.PenStyle.DashLine) # Pen to style the lines showing the fft maximum search range
         volumeBorderPen = pg.mkPen(color=(10, 10, 240), width = 3, style=QtCore.Qt.PenStyle.DashLine)
@@ -463,8 +462,8 @@ class MainWindow(QtWidgets.QMainWindow):
         
         # self.waterfallGraph.addLegend(offset=(-2, 2), pen=plotPen, brush=pg.mkBrush(color=(255, 255, 255, 210)), labelTextColor=plotPen.color())
         self.waterfallPlots = list()
-        for i in range(0,1025):
-            self.waterfallPlots.append(self.waterfallGraph.plot([], pen=plotPen))
+        for i in range(0,101):
+            self.waterfallPlots.append(self.waterfallGraph.plot([], pen=plotPenWaterfall))
         self.waterfallGraph.getAxis("bottom").setLabel("Time ", units="s")
         self.waterfallGraph.setLabel("left", "Frequency", units="Hz")
         
@@ -595,7 +594,7 @@ class MainWindow(QtWidgets.QMainWindow):
         elif self.fPlotType == "spectogram":
             # spectogram visualization
             if N > 1:
-                winLength = round(self.F/self.spectFreqResolution)
+                winLength = round(self.F/self.spectFreqResolution)*2
                 if N >= winLength/2:
                     win = windows.gaussian(winLength, std=winLength*0.3, sym=True)
                     sft = ShortTimeFFT(win=win, hop=round(self.spectTimeResolution*self.F), fs=self.F, fft_mode="onesided", scale_to="psd")
@@ -630,8 +629,8 @@ class MainWindow(QtWidgets.QMainWindow):
         elif self.fPlotType == "waterfall":
             # waterfall visualization
             if N > 1:
-                winLength = round(self.F/self.spectFreqResolution)
-                winLength = 50 # fixed resolution of 0.25 Hz for 50 S/s
+                winLength = round(self.F/self.spectFreqResolution)*2
+                winLength = min(winLength, 200) # limit winlength to 200 resulting in 100 lines for clarity
                 waterfallDistance = self.F/winLength
                 if N >= winLength/2:
                     win = windows.gaussian(winLength, std=winLength*0.3, sym=True)
@@ -646,8 +645,11 @@ class MainWindow(QtWidgets.QMainWindow):
                         logSpect = self.lin2dbSPL(spect.T)
                         spectRange = [np.min(logSpect), np.max(logSpect)]
                         for i,x in enumerate(logSpect.T):
-                            scaledLine = (x-np.mean(x))/(spectRange[1]-spectRange[0])*waterfallDistance
+                            scaledLine = (x-np.mean(x))/(spectRange[1]-spectRange[0])*waterfallDistance*1.1
                             self.waterfallPlots[i].setData(xs, scaledLine+i*waterfallDistance)
+                        for i in range(i+1,len(self.waterfallPlots)):
+                            self.waterfallPlots[i].setData([])
+                            
                             
                         self.spectGraph.autoRange(padding=0.1)
                     else:
