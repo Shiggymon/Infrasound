@@ -132,9 +132,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.spinSpectZLimitMax = QDoubleSpinBox()
         self.spinSpectZLimitMin = QDoubleSpinBox()
         cbSpectZLimitAuto = QCheckBox("auto")
-        
-        buttonExport = QPushButton("Export Data")        
-
+        buttonExport = QPushButton("Export Data")
 
 
         # Set Top Layout with 2 Graphs
