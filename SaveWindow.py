@@ -39,6 +39,7 @@ class SaveWindow(QDialog):
             b.setAutoDefault(False)
 
     def exportData(self, png=False, csv=False, wav=False, all=False):
+        targetPath = ""
         if png:
             targetPath, _ = QFileDialog.getSaveFileName(caption="Save Image", directory=self.defaultName+".png", filter="Images (*.png *.jpg)")
             if targetPath:
@@ -65,6 +66,8 @@ class SaveWindow(QDialog):
                         z.write(pngPath, os.path.basename(pngPath))
                         z.write(csvPath, os.path.basename(csvPath))
                         z.write(wavPath, os.path.basename(wavPath))
+        if targetPath:
+            self.accept()
     
     def savePng(self, targetPath):
         pngExporter = pyqtgraph.exporters.ImageExporter(self.exportArea.scene())
