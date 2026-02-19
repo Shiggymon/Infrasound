@@ -129,9 +129,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self.spinSpectZLimitMin = QDoubleSpinBox()
         cbSpectZLimitAuto = QCheckBox("auto")
         
-        # buttonExportPng = QPushButton("Save (Image)")
-        # buttonExportCsv = QPushButton("Save (Text)")
-        # buttonExportWav = QPushButton("Save (Audio)")
         buttonExport = QPushButton("Export Data")        
 
 
@@ -359,18 +356,12 @@ class MainWindow(QtWidgets.QMainWindow):
         
         self.settingsLayout.addWidget(groupBoxViewRight,1,7, 2, 1)
         self.settingsLayout.addWidget(self.fftYLimitContainer,3,7)
-        # self.settingsLayout.addWidget(buttonExportPng,5,7)
-        # self.settingsLayout.addWidget(buttonExportCsv,6,7)
-        # self.settingsLayout.addWidget(buttonExportWav,7,7)
         self.settingsLayout.addWidget(buttonExport,6,7)
         self.buttonViewFft.clicked.connect(lambda :self.switchView("fft"))
         self.buttonViewFft.setCheckable(True)
         self.buttonViewSpect.clicked.connect(lambda :self.switchView("spectogram"))
         self.buttonViewSpect.setCheckable(True)
-        # buttonExportPng.clicked.connect(lambda :self.exportData(png=True))
-        # buttonExportCsv.clicked.connect(lambda :self.exportData(csv=True))
-        # buttonExportWav.clicked.connect(lambda :self.exportData(wav=True))
-        buttonExport.clicked.connect(lambda : self.exportData())
+        buttonExport.clicked.connect(lambda : self.openAfterEvents(self.exportData))
         
         self.fftYLimitContainer.setContentsMargins(0, 0, 0, 0)
         fftYLimitLayout.setContentsMargins(0, 0, 0, 0)
@@ -976,6 +967,9 @@ class MainWindow(QtWidgets.QMainWindow):
             return True
         except ValueError:
             return False
+    
+    def openAfterEvents(self, func):
+        QTimer.singleShot(0, lambda: QTimer.singleShot(0, func))
     
     class CustomDoubleSpinBox(QDoubleSpinBox):
         def textFromValue(self, v: float) -> str:
