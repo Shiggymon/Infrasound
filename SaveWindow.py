@@ -17,6 +17,7 @@ class SaveWindow(QDialog):
         self.yData = yData
         self.sampleRate = sampleRate
         
+        
         self.buttonLayout = QVBoxLayout()
         buttonExportPng = QPushButton("Save (Image)")
         buttonExportCsv = QPushButton("Save (Text)")
@@ -28,7 +29,10 @@ class SaveWindow(QDialog):
         buttonExportCsv.clicked.connect(lambda :self.exportData(csv=True))
         buttonExportWav.clicked.connect(lambda :self.exportData(wav=True))
         
-        self.setLayout(self.buttonLayout)        
+        self.setLayout(self.buttonLayout)
+        for b in (buttonExportPng, buttonExportCsv, buttonExportWav):
+            b.setDefault(False)
+            b.setAutoDefault(False)
 
     def exportData(self, png=False, csv=False, wav=False):
         if png:
