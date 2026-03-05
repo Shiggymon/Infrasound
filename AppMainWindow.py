@@ -68,6 +68,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.settings.setValue("Display/SpectrumRange", self.spectZRange)
         else:
             self.spectZRange = [float(x) if self._isFloat(x) else -30 if i == 0 else 40 for i, x in enumerate(self.spectZRange[0:2])] # limit list to the first 2 values. Use them if they are float. Otherwise set -30 if first value or 40 if second value. 
+        self.spectFreqLimit = self.F/2
         self.captureActive = False # Is the input port active
         self.capturePaused = False # Is the receiving of data paused
         self.serialPorts = list()
@@ -133,7 +134,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.spinSpectZLimitMin = QDoubleSpinBox()
         cbSpectZLimitAuto = QCheckBox("auto")
         buttonExport = QPushButton("Export Data")
-
+        self.spectFreqLimitContainer = QGroupBox("Frequency Display limits")
+        spectFreqLimitLayout = QHBoxLayout()
+        self.spectFreqLimitHigh = QRadioButton("0 - {0} Hz".format(self.F/2))
+        self.spectFreqLimitMid = QRadioButton("0 - {0} Hz".format(self.F/2/5))
+        self.spectFreqLimitLow = QRadioButton("0 - {0} Hz".format(self.F/2/25))
+        self.spectFreqLimitGroup = QButtonGroup()
 
         # Set Top Layout with 2 Graphs
         vLayout.addLayout(hTopLayout)
@@ -360,10 +366,19 @@ class MainWindow(QtWidgets.QMainWindow):
         spectZLimitLayout.addWidget(self.spinSpectZLimitMin)
         spectZLimitLayout.addWidget(self.spinSpectZLimitMax)
         spectZLimitLayout.addWidget(cbSpectZLimitAuto)
+        self.spectFreqLimitGroup.addButton(self.spectFreqLimitHigh, 0)
+        self.spectFreqLimitGroup.addButton(self.spectFreqLimitMid, 1)
+        self.spectFreqLimitGroup.addButton(self.spectFreqLimitLow, 2)
+        spectFreqLimitLayout.addWidget(self.spectFreqLimitHigh)
+        spectFreqLimitLayout.addWidget(self.spectFreqLimitMid)
+        spectFreqLimitLayout.addWidget(self.spectFreqLimitLow)
+        self.spectFreqLimitContainer.setLayout(spectFreqLimitLayout)
+        self.spectFreqLimitHigh.setChecked(True)
         
         self.settingsLayout.addWidget(groupBoxViewRight,1,7, 2, 1)
         self.settingsLayout.addWidget(self.fftYLimitContainer,3,7)
-        self.settingsLayout.addWidget(buttonExport,6,7)
+        self.settingsLayout.addWidget(self.spectFreqLimitContainer,5,7, 2, 1)
+        self.settingsLayout.addWidget(buttonExport,7,7)
         self.buttonViewFft.clicked.connect(lambda :self.switchView("fft"))
         self.buttonViewFft.setCheckable(True)
         self.buttonViewSpect.clicked.connect(lambda :self.switchView("spectogram"))
@@ -416,6 +431,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.spinSpectZLimitMax.valueChanged.connect(lambda t: self.setSpectZRange(upper=t))
         cbSpectZLimitAuto.setChecked(self.spectZRangeAuto)
         cbSpectZLimitAuto.clicked.connect(lambda t: self.setSpectZRange(autoRange=t))
+        
+        self.spectFreqLimitGroup.buttonClicked.connect(lambda t: self.setSpectFreqLimit(self.spectFreqLimitGroup.id(t)))
         
         # Add Layout to Main Window
         mainWidget.setLayout(vLayout)
@@ -574,7 +591,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     else:
                         fftYRange[1] = self.fftYLimit
                 self.fftGraph.setYRange(min=0, max=fftYRange[1], padding=0.1)
-                self.fftGraph.setXRange(min=xf[0], max=xf[-1], padding=0)
+                self.fftGraph.setXRange(min=0, max=self.spectFreqLimit, padding=0)
                 
                 self.lineFMaxStart.setData([xf[fftMaxStart], xf[fftMaxStart]],self.fftGraph.getViewBox().viewRange()[1])
                 self.lineFMaxEnd.setData([xf[fftMaxEnd], xf[fftMaxEnd]],self.fftGraph.getViewBox().viewRange()[1])
@@ -616,7 +633,7 @@ class MainWindow(QtWidgets.QMainWindow):
                         zRange = self.spectZRange
                     self.spectImg.setLevels(zRange)
                     self.spectColorBar.setLevels(zRange)
-                    self.spectGraph.setYRange(min=0, max=self.F/2, padding=0)
+                    self.spectGraph.setYRange(min=0, max=self.spectFreqLimit, padding=0)
                     self.spectGraph.setXRange(min=times[0]+self.xs[fftStart]/self.F, max=times[1]+self.xs[fftStart]/self.F, padding=0)
                 else:
                     self.spectImg.clear()
@@ -650,7 +667,7 @@ class MainWindow(QtWidgets.QMainWindow):
                         pass
                         # self.spectImg.setImage(spect.T, autoLevels=False)
                         # zRange = [np.nanmin(spect), np.nanmax(spect)]
-                    self.waterfallGraph.setYRange(min=-waterfallDistance, max=self.F/2+waterfallDistance, padding=0)
+                    self.waterfallGraph.setYRange(min=-waterfallDistance, max=self.spectFreqLimit+waterfallDistance, padding=0)
                     self.waterfallGraph.setXRange(min=xs[0], max=xs[-1] , padding=0)
                     
                 else:
@@ -751,6 +768,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.spinSpectResolutionFreq.setMaximum(self.F/2)
         self.spinSpectResolutionTime.setMinimum(1/self.F)
         self.spinSpectResolutionTime.setSingleStep(1/self.F)
+        
+        self.spectFreqLimitHigh.setText("0 - {0} Hz".format(self.F/2))
+        self.spectFreqLimitMid.setText("0 - {0} Hz".format(self.F/2/5))
+        self.spectFreqLimitLow.setText("0 - {0} Hz".format(self.F/2/25))
+        self.setSpectFreqLimit(self.spectFreqLimitGroup.checkedId())
 
     def setCaptureTime(self, captureTime):
         if captureTime > 0:
@@ -864,6 +886,13 @@ class MainWindow(QtWidgets.QMainWindow):
             self.spectTimeResolution = round(time, 2)
             self.settings.setValue("Analysis/SpectrumTimeResolution", self.spectTimeResolution)
 
+    def setSpectFreqLimit(self, limit: int):
+        if limit == "HIGH" or limit == 0:
+            self.spectFreqLimit = self.F/2
+        elif limit == "MID" or limit == 1:
+            self.spectFreqLimit = self.F/2/5
+        elif limit == "LOW" or limit == 2:
+            self.spectFreqLimit = self.F/2/25
 
     def setVolumeRange(self, start=None, end=None):
         if start != None:
